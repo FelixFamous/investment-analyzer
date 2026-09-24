@@ -1,0 +1,242 @@
+/* ============================================================
+   AlphaEdge · Price Alerts
+   ============================================================ */
+
+/* ---------- Radio cards (Above / Below) ---------- */
+.radio-row {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 10px;
+}
+@media (max-width: 500px) {
+  .radio-row { grid-template-columns: 1fr; }
+}
+
+.radio-card {
+  display: block;
+  cursor: pointer;
+}
+.radio-card input[type="radio"] {
+  position: absolute;
+  opacity: 0;
+  pointer-events: none;
+}
+.radio-card-body {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 12px 14px;
+  background: var(--panel-2);
+  border: 1px solid var(--border-2);
+  border-radius: 12px;
+  transition: all 0.15s;
+}
+.radio-card:hover .radio-card-body {
+  border-color: var(--border-3);
+}
+.radio-card input[type="radio"]:checked + .radio-card-body {
+  border-color: var(--accent);
+  background: var(--accent-glow);
+  box-shadow: 0 0 0 1px var(--accent);
+}
+.radio-card-body strong {
+  display: block;
+  font-size: 13px;
+  color: var(--text);
+}
+.radio-card-body small {
+  display: block;
+  font-size: 10.5px;
+  color: var(--text-dim);
+  margin-top: 1px;
+}
+.radio-card-icon {
+  font-size: 20px;
+  flex-shrink: 0;
+}
+
+/* ---------- Tip panel ---------- */
+.alert-tip {
+  margin-top: 18px;
+  padding: 12px 14px;
+  background: rgba(240,185,11,0.05);
+  border: 1px solid rgba(240,185,11,0.2);
+  border-radius: 10px;
+  font-size: 12px;
+  color: var(--text-dim);
+  line-height: 1.6;
+}
+.alert-tip strong { color: var(--accent); }
+
+/* ---------- Alert list ---------- */
+.alert-item {
+  display: flex;
+  align-items: center;
+  gap: 14px;
+  padding: 14px;
+  margin-bottom: 8px;
+  background: var(--panel-2);
+  border: 1px solid var(--border);
+  border-radius: 12px;
+  transition: border-color 0.15s;
+}
+.alert-item:hover { border-color: var(--border-2); }
+.alert-item.triggered { border-color: rgba(14,203,129,0.3); background: rgba(14,203,129,0.03); }
+.alert-item.cancelled { opacity: 0.55; }
+
+.alert-icon {
+  width: 40px;
+  height: 40px;
+  border-radius: 10px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 18px;
+  flex-shrink: 0;
+  font-weight: 800;
+}
+.alert-icon.above { background: rgba(14,203,129,0.12); color: var(--green); }
+.alert-icon.below { background: rgba(246,70,93,0.12); color: var(--red); }
+
+.alert-body {
+  flex: 1;
+  min-width: 0;
+}
+.alert-headline {
+  font-size: 13.5px;
+  font-weight: 600;
+  color: var(--text);
+  margin-bottom: 3px;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex-wrap: wrap;
+}
+.alert-headline .sym {
+  font-weight: 800;
+  color: var(--accent);
+}
+.alert-condition {
+  color: var(--text-dim);
+  font-weight: 500;
+}
+.alert-meta {
+  font-size: 11px;
+  color: var(--text-faint);
+  font-family: var(--mono);
+  display: flex;
+  gap: 12px;
+  flex-wrap: wrap;
+}
+.alert-meta span {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+}
+
+.alert-note {
+  font-size: 11.5px;
+  color: var(--text-dim);
+  font-style: italic;
+  margin-top: 4px;
+}
+
+.alert-actions {
+  display: flex;
+  gap: 6px;
+  flex-shrink: 0;
+}
+.alert-action-btn {
+  width: 32px;
+  height: 32px;
+  border-radius: 8px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: transparent;
+  border: 1px solid var(--border-2);
+  color: var(--text-dim);
+  cursor: pointer;
+  font-size: 13px;
+  transition: all 0.15s;
+  font-family: inherit;
+}
+.alert-action-btn:hover {
+  background: var(--panel-3);
+  color: var(--text);
+  border-color: var(--border-3);
+}
+.alert-action-btn.danger:hover {
+  background: var(--red-glow);
+  color: var(--red);
+  border-color: rgba(246,70,93,0.4);
+}
+
+/* ---------- Distance pill ---------- */
+.distance-pill {
+  display: inline-flex;
+  align-items: center;
+  gap: 3px;
+  padding: 2px 7px;
+  border-radius: 5px;
+  font-size: 10px;
+  font-weight: 700;
+  font-family: var(--mono);
+}
+.distance-pill.near { background: rgba(240,185,11,0.15); color: var(--accent); }
+.distance-pill.far  { background: var(--panel-3); color: var(--text-dim); }
+
+/* ---------- Fired banner ---------- */
+.alert-fired-banner {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 14px 18px;
+  margin-bottom: 16px;
+  background: linear-gradient(135deg, rgba(14,203,129,0.12), rgba(14,203,129,0.04));
+  border: 1px solid rgba(14,203,129,0.4);
+  border-radius: 12px;
+  animation: alertSlide 0.3s ease;
+}
+@keyframes alertSlide {
+  from { opacity: 0; transform: translateY(-8px); }
+  to   { opacity: 1; transform: translateY(0); }
+}
+.alert-fired-icon {
+  width: 36px;
+  height: 36px;
+  border-radius: 50%;
+  background: var(--green);
+  color: #0a0b0f;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 18px;
+  flex-shrink: 0;
+}
+.alert-fired-text {
+  flex: 1;
+  font-size: 13px;
+  color: var(--text);
+  font-weight: 600;
+}
+.alert-fired-text small {
+  display: block;
+  font-weight: 400;
+  color: var(--text-dim);
+  font-size: 11px;
+  margin-top: 2px;
+}
+
+/* ---------- Empty state ---------- */
+.alerts-empty {
+  text-align: center;
+  padding: 40px 20px;
+  color: var(--text-faint);
+  font-size: 13px;
+}
+.alerts-empty-icon {
+  font-size: 40px;
+  margin-bottom: 12px;
+  opacity: 0.4;
+}

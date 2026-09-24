@@ -1,0 +1,81 @@
+/* ============================================================
+   AlphaEdge · Portfolio page
+   ============================================================ */
+
+/* Equity chart panel */
+#equityChart {
+  display: block !important;
+  width: 100% !important;
+  position: relative;
+  background: transparent;
+  overflow: hidden;
+}
+
+#equityChartWrap {
+  display: none;
+  width: 100%;
+}
+#equityChartWrap.visible {
+  display: block;
+}
+
+@media (max-width: 900px) {
+  #equityChart {
+    height: 260px !important;
+    min-height: 260px !important;
+  }
+}
+
+/* Mobile edge-to-edge */
+@media (max-width: 900px) {
+  .main-grid .panel:has(#equityChart),
+  .panel:has(#equityChart) {
+    padding-left: 0;
+    padding-right: 0;
+    margin-left: -14px;
+    margin-right: -14px;
+    border-radius: 0 !important;
+    border-left: none !important;
+    border-right: none !important;
+  }
+  .panel:has(#equityChart) .panel-header,
+  .panel:has(#equityChart) #equityMeta {
+    padding-left: 14px;
+    padding-right: 14px;
+  }
+}
+
+/* Prevent jumps while loading */
+#equityChartLoading {
+  animation: eqPulse 1.4s ease-in-out infinite;
+}
+@keyframes eqPulse {
+  0%, 100% { opacity: 0.5; }
+  50%      { opacity: 1; }
+}
+
+/* Range tabs bigger on mobile */
+@media (max-width: 900px) {
+  #equityRangeTabs .tab {
+    padding: 6px 14px !important;
+    font-size: 12px !important;
+  }
+}
+
+/* Allocation bar labels */
+.alloc-row {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 6px 0;
+  font-size: 12px;
+}
+.alloc-row .dot {
+  width: 10px;
+  height: 10px;
+  border-radius: 2px;
+  flex-shrink: 0;
+}
+.alloc-row .label { flex: 1; font-weight: 600; }
+.alloc-row .pct   { font-family: var(--mono); color: var(--text-dim); }
+.alloc-row .val   { font-family: var(--mono); font-weight: 600; min-width: 80px; text-align: right; }

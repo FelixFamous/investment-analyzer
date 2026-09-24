@@ -1,0 +1,178 @@
+/* ============================================================
+   AlphaEdge · Risk Manager
+   ============================================================ */
+
+/* Portfolio heat meter */
+.heat-meter {
+  padding: 8px 0 0;
+}
+.heat-meter-track {
+  position: relative;
+  height: 14px;
+  background: var(--panel-2);
+  border-radius: 100px;
+  overflow: visible;
+  border: 1px solid var(--border);
+}
+.heat-meter-fill {
+  height: 100%;
+  border-radius: 100px;
+  transition: width 0.4s ease, background 0.2s;
+}
+.heat-meter-marker {
+  position: absolute;
+  top: -4px;
+  bottom: -4px;
+  width: 2px;
+  background: var(--text-faint);
+  transform: translateX(-50%);
+}
+.heat-meter-labels {
+  display: flex;
+  justify-content: space-between;
+  margin-top: 8px;
+  font-size: 11px;
+  color: var(--text-dim);
+  font-family: var(--mono);
+}
+
+/* Position concentration rows */
+.risk-position-row {
+  display: grid;
+  grid-template-columns: 130px 1fr 130px;
+  align-items: center;
+  gap: 14px;
+  padding: 12px 0;
+  border-bottom: 1px solid var(--border);
+}
+.risk-position-row:last-child { border-bottom: none; }
+
+.risk-position-sym {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-size: 14px;
+}
+.risk-position-sym strong { font-weight: 700; }
+
+.risk-tag {
+  font-size: 9px;
+  font-weight: 800;
+  padding: 2px 7px;
+  border-radius: 100px;
+  letter-spacing: 0.5px;
+  text-transform: uppercase;
+}
+.risk-tag.ok  { background: var(--green-glow); color: var(--green); }
+.risk-tag.warn{ background: rgba(240,185,11,0.12); color: var(--accent); }
+
+.risk-position-bar-wrap {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+.risk-position-bar {
+  flex: 1;
+  height: 6px;
+  background: var(--panel-2);
+  border-radius: 100px;
+  overflow: hidden;
+}
+.risk-position-fill {
+  height: 100%;
+  border-radius: 100px;
+  transition: width 0.4s ease;
+}
+.risk-position-pct {
+  font-size: 11px;
+  font-family: var(--mono);
+  color: var(--text-dim);
+  min-width: 45px;
+  text-align: right;
+}
+.risk-position-value {
+  text-align: right;
+  font-family: var(--mono);
+  font-weight: 700;
+  font-size: 13px;
+}
+
+/* Alerts */
+.risk-alert {
+  padding: 12px 14px;
+  margin-top: 12px;
+  background: var(--red-glow);
+  border-left: 3px solid var(--red);
+  border-radius: 8px;
+  font-size: 12.5px;
+  color: var(--text-dim);
+  line-height: 1.55;
+}
+.risk-alert strong { color: var(--red); }
+.risk-alert.warn {
+  background: rgba(240,185,11,0.06);
+  border-left-color: var(--accent);
+}
+.risk-alert.warn strong { color: var(--accent); }
+
+/* Settings form */
+.risk-field-group {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
+  gap: 20px;
+}
+
+/* Presets */
+.risk-presets {
+  margin-top: 24px;
+  padding-top: 20px;
+  border-top: 1px solid var(--border);
+}
+.risk-presets-label {
+  font-size: 11px;
+  text-transform: uppercase;
+  letter-spacing: 0.7px;
+  font-weight: 800;
+  color: var(--text-faint);
+  margin-bottom: 10px;
+}
+.risk-presets-row {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(160px, 1fr));
+  gap: 10px;
+}
+.risk-preset {
+  padding: 14px;
+  background: var(--panel-2);
+  border: 1px solid var(--border-2);
+  border-radius: 12px;
+  text-align: left;
+  cursor: pointer;
+  transition: all 0.15s;
+  font-family: inherit;
+  color: var(--text);
+}
+.risk-preset:hover {
+  border-color: var(--accent);
+  background: var(--accent-glow);
+}
+.risk-preset strong {
+  display: block;
+  font-size: 13px;
+  font-weight: 700;
+  margin-bottom: 4px;
+}
+.risk-preset span {
+  font-family: var(--mono);
+  font-size: 11px;
+  color: var(--text-dim);
+}
+
+/* Mobile */
+@media (max-width: 640px) {
+  .risk-position-row {
+    grid-template-columns: 1fr;
+    gap: 8px;
+  }
+  .risk-position-value { text-align: left; }
+}

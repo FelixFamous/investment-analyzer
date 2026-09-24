@@ -1,0 +1,165 @@
+/* ============================================================
+   AlphaEdge · KYC Wizard
+   ============================================================ */
+
+.kyc-wizard {
+  margin-bottom: 24px;
+}
+
+/* ---------- Progress bar ---------- */
+.wizard-progress {
+  height: 4px;
+  background: var(--panel-2);
+  border-radius: 100px;
+  overflow: hidden;
+  margin-bottom: 24px;
+}
+.wizard-progress-fill {
+  height: 100%;
+  background: linear-gradient(90deg, var(--accent), #ffd966);
+  border-radius: 100px;
+  transition: width 0.35s ease;
+}
+
+/* ---------- Step indicators ---------- */
+.wizard-steps {
+  display: flex;
+  justify-content: space-between;
+  margin-bottom: 28px;
+  gap: 8px;
+}
+.wizard-step {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 8px;
+  opacity: 0.4;
+  transition: opacity 0.25s;
+}
+.wizard-step.active,
+.wizard-step.done {
+  opacity: 1;
+}
+.wizard-step-dot {
+  width: 34px;
+  height: 34px;
+  border-radius: 50%;
+  background: var(--panel-2);
+  border: 2px solid var(--border-2);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 13px;
+  font-weight: 800;
+  color: var(--text-dim);
+  transition: all 0.25s;
+  font-family: var(--mono);
+}
+.wizard-step.active .wizard-step-dot {
+  background: var(--accent);
+  border-color: var(--accent);
+  color: #0a0b0f;
+  box-shadow: 0 0 0 4px rgba(240,185,11,0.15);
+}
+.wizard-step.done .wizard-step-dot {
+  background: var(--green);
+  border-color: var(--green);
+  color: #0a0b0f;
+}
+.wizard-step.done .wizard-step-dot::after {
+  content: '✓';
+}
+.wizard-step.done .wizard-step-dot {
+  font-size: 0;
+}
+.wizard-step-label {
+  font-size: 11px;
+  font-weight: 600;
+  color: var(--text-dim);
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+  text-align: center;
+}
+.wizard-step.active .wizard-step-label { color: var(--accent); }
+.wizard-step.done .wizard-step-label   { color: var(--green); }
+
+@media (max-width: 640px) {
+  .wizard-step-label { font-size: 9px; }
+  .wizard-step-dot { width: 28px; height: 28px; font-size: 11px; }
+}
+
+/* ---------- Panel wrapper ---------- */
+.kyc-panel {
+  position: relative;
+}
+.kyc-step-panel {
+  animation: kycStepIn 0.25s ease;
+}
+@keyframes kycStepIn {
+  from { opacity: 0; transform: translateY(6px); }
+  to { opacity: 1; transform: translateY(0); }
+}
+
+/* ---------- Wizard nav ---------- */
+.wizard-nav {
+  display: flex;
+  justify-content: space-between;
+  gap: 12px;
+  margin-top: 24px;
+  padding-top: 20px;
+  border-top: 1px solid var(--border);
+}
+.wizard-nav .btn {
+  padding: 11px 22px;
+  font-size: 13px;
+  min-width: 110px;
+}
+#wizNext { margin-left: auto; }
+#kycSubmitBtn { margin-left: auto; }
+
+/* ---------- File input styling ---------- */
+.form-group input[type="file"] {
+  background: var(--bg-2);
+  border: 1px dashed var(--border-2);
+  border-radius: var(--radius-sm);
+  padding: 10px 14px;
+  color: var(--text-dim);
+  font-size: 13px;
+  width: 100%;
+  cursor: pointer;
+  transition: border-color 0.15s, background 0.15s;
+}
+.form-group input[type="file"]:hover {
+  border-color: var(--accent);
+  background: rgba(240,185,11,0.03);
+}
+.form-group input[type="file"]::file-selector-button {
+  background: var(--panel-2);
+  border: 1px solid var(--border-2);
+  color: var(--text);
+  padding: 6px 12px;
+  border-radius: 8px;
+  font-size: 12px;
+  font-weight: 600;
+  margin-right: 12px;
+  cursor: pointer;
+  font-family: inherit;
+}
+.form-group input[type="file"]::file-selector-button:hover {
+  background: var(--panel-3);
+  border-color: var(--accent);
+}
+
+/* ---------- Notice panels ---------- */
+.kyc-notice {
+  background: rgba(240,185,11,0.06);
+  border: 1px solid rgba(240,185,11,0.25);
+  border-radius: 12px;
+  padding: 14px 16px;
+  font-size: 12px;
+  color: var(--text-dim);
+  line-height: 1.6;
+  margin-top: 12px;
+}
+.kyc-notice strong { color: var(--accent); }

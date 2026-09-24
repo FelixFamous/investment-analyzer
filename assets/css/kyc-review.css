@@ -1,0 +1,120 @@
+/* ============================================================
+   AlphaEdge · KYC Review (admin)
+   ============================================================ */
+
+/* Checklist grid at top of review page */
+.kyc-checklist-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+  gap: 8px;
+}
+.kyc-check-item {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 10px 14px;
+  background: var(--panel-2);
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  font-size: 12.5px;
+  font-weight: 500;
+}
+.kyc-check-item.ok   { border-color: rgba(14,203,129,0.35); background: rgba(14,203,129,0.06); color: var(--green); }
+.kyc-check-item.miss { border-color: rgba(246,70,93,0.35);  background: rgba(246,70,93,0.06);  color: var(--red);   }
+.kyc-check-icon {
+  width: 20px;
+  height: 20px;
+  border-radius: 50%;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 11px;
+  font-weight: 800;
+  flex-shrink: 0;
+  background: var(--panel);
+}
+.kyc-check-item.ok   .kyc-check-icon { background: var(--green); color: #0a0b0f; }
+.kyc-check-item.miss .kyc-check-icon { background: var(--red);   color: #fff; }
+
+/* Document preview row */
+.kyc-docs-row {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(280px, 1fr));
+  gap: 14px;
+}
+
+.kyc-doc-card {
+  background: var(--panel-2);
+  border: 1px solid var(--border);
+  border-radius: 12px;
+  padding: 12px;
+  display: flex;
+  flex-direction: column;
+}
+.kyc-doc-label {
+  font-size: 10px;
+  text-transform: uppercase;
+  letter-spacing: 0.7px;
+  font-weight: 800;
+  color: var(--text-faint);
+  margin-bottom: 8px;
+}
+
+.kyc-doc-img {
+  width: 100%;
+  height: auto;
+  max-height: 380px;
+  object-fit: contain;
+  border-radius: 8px;
+  border: 1px solid var(--border-2);
+  cursor: zoom-in;
+  display: block;
+  background: #05070c;
+  transition: border-color 0.15s;
+}
+.kyc-doc-img:hover { border-color: var(--accent); }
+
+.kyc-doc-pdf {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  padding: 40px 20px;
+  background: var(--bg-2);
+  border: 1px dashed var(--border-2);
+  border-radius: 8px;
+  color: var(--accent);
+  font-weight: 700;
+  font-size: 13px;
+  text-decoration: none;
+  transition: border-color 0.15s, background 0.15s;
+}
+.kyc-doc-pdf:hover {
+  border-color: var(--accent);
+  background: rgba(240,185,11,0.04);
+  text-decoration: none;
+}
+
+.kyc-doc-empty {
+  padding: 40px 20px;
+  background: var(--bg-2);
+  border: 2px dashed var(--border-2);
+  border-radius: 8px;
+  color: var(--text-faint);
+  font-size: 12px;
+  text-align: center;
+}
+
+.kyc-doc-meta {
+  font-size: 10px;
+  color: var(--text-faint);
+  font-family: var(--mono);
+  margin-top: 8px;
+  word-break: break-all;
+}
+
+/* Mobile */
+@media (max-width: 640px) {
+  .kyc-docs-row { grid-template-columns: 1fr; }
+  .kyc-doc-img { max-height: 300px; }
+}

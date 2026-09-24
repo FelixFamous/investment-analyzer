@@ -1,0 +1,322 @@
+/* ============================================================
+   AlphaEdge · Legal pages + Cookie banner
+   ============================================================ */
+
+/* ---------- Cookie consent banner ---------- */
+.cookie-banner {
+  position: fixed;
+  bottom: 0; left: 0; right: 0;
+  background: rgba(20, 23, 32, 0.98);
+  border-top: 1px solid var(--border-2);
+  backdrop-filter: blur(20px);
+  -webkit-backdrop-filter: blur(20px);
+  z-index: 150;
+  padding: 16px 24px calc(16px + env(safe-area-inset-bottom, 0px));
+  display: none;
+  animation: cookieSlideUp 0.35s ease;
+  box-shadow: 0 -8px 32px rgba(0,0,0,0.5);
+}
+.cookie-banner.show { display: flex; }
+.cookie-banner[style*="flex"] { display: flex !important; }
+
+@keyframes cookieSlideUp {
+  from { transform: translateY(100%); }
+  to   { transform: translateY(0); }
+}
+
+.cookie-banner-content {
+  max-width: 1280px;
+  margin: 0 auto;
+  display: flex;
+  align-items: center;
+  gap: 18px;
+  width: 100%;
+  flex-wrap: wrap;
+}
+.cookie-banner-icon { font-size: 28px; flex-shrink: 0; }
+.cookie-banner-text { flex: 1; min-width: 240px; }
+.cookie-banner-text strong {
+  font-size: 14px;
+  font-weight: 700;
+  color: var(--text);
+  display: block;
+  margin-bottom: 4px;
+}
+.cookie-banner-text p {
+  font-size: 12.5px;
+  color: var(--text-dim);
+  line-height: 1.55;
+  margin: 0;
+}
+.cookie-banner-text a { color: var(--accent); text-decoration: underline; }
+.cookie-banner-actions {
+  display: flex;
+  gap: 8px;
+  flex-shrink: 0;
+}
+.cookie-banner-actions .btn { padding: 10px 20px; font-size: 12.5px; }
+
+@media (max-width: 640px) {
+  .cookie-banner { padding: 14px; }
+  .cookie-banner-icon { display: none; }
+  .cookie-banner-actions { width: 100%; }
+  .cookie-banner-actions .btn { flex: 1; }
+}
+
+/* ---------- Legal pages ---------- */
+.legal-page {
+  max-width: 820px;
+  margin: 0 auto;
+  padding: 20px 0 40px;
+}
+
+.legal-hero {
+  padding: 32px 0 24px;
+  border-bottom: 1px solid var(--border);
+  margin-bottom: 32px;
+}
+.legal-hero h1 {
+  font-size: 32px;
+  font-weight: 800;
+  letter-spacing: -0.6px;
+  margin-bottom: 8px;
+  color: var(--text);
+}
+.legal-hero p {
+  font-size: 14px;
+  color: var(--text-dim);
+}
+.legal-hero .legal-updated {
+  font-size: 12px;
+  font-family: var(--mono);
+  color: var(--text-faint);
+  margin-top: 8px;
+}
+
+.legal-page h2 {
+  font-size: 20px;
+  font-weight: 700;
+  color: var(--text);
+  margin: 32px 0 12px;
+  letter-spacing: -0.3px;
+}
+.legal-page h2:first-child { margin-top: 0; }
+
+.legal-page h3 {
+  font-size: 15px;
+  font-weight: 700;
+  color: var(--text);
+  margin: 20px 0 8px;
+}
+
+.legal-page p {
+  font-size: 13.5px;
+  color: var(--text-dim);
+  line-height: 1.75;
+  margin-bottom: 14px;
+}
+
+.legal-page ul,
+.legal-page ol {
+  font-size: 13.5px;
+  color: var(--text-dim);
+  line-height: 1.75;
+  margin: 0 0 16px 22px;
+  padding: 0;
+}
+.legal-page li { margin-bottom: 6px; }
+.legal-page strong { color: var(--text); font-weight: 700; }
+.legal-page em { color: var(--text); font-style: italic; }
+.legal-page a { color: var(--accent); text-decoration: underline; }
+.legal-page a:hover { text-decoration: none; }
+
+.legal-page code {
+  background: var(--panel-2);
+  padding: 2px 6px;
+  border-radius: 5px;
+  font-family: var(--mono);
+  font-size: 12px;
+  color: var(--accent);
+}
+
+.legal-page table {
+  width: 100%;
+  border-collapse: collapse;
+  margin: 16px 0;
+  font-size: 13px;
+}
+.legal-page table th {
+  text-align: left;
+  padding: 10px 12px;
+  background: var(--panel-2);
+  color: var(--text);
+  font-weight: 700;
+  border: 1px solid var(--border);
+  font-size: 12px;
+  text-transform: uppercase;
+  letter-spacing: 0.4px;
+}
+.legal-page table td {
+  padding: 10px 12px;
+  border: 1px solid var(--border);
+  color: var(--text-dim);
+  vertical-align: top;
+}
+
+.legal-callout {
+  padding: 16px 18px;
+  margin: 20px 0;
+  background: rgba(240,185,11,0.05);
+  border-left: 3px solid var(--accent);
+  border-radius: 8px;
+  font-size: 13px;
+  color: var(--text-dim);
+  line-height: 1.7;
+}
+.legal-callout strong { color: var(--accent); }
+
+/* ---------- Footer legal links ---------- */
+.footer-links {
+  display: flex;
+  justify-content: center;
+  align-items: center;
+  gap: 10px;
+  margin-top: 8px;
+  font-size: 12px;
+  color: var(--text-faint);
+}
+.footer-links a {
+  color: var(--text-dim);
+  text-decoration: none;
+  transition: color 0.15s;
+}
+.footer-links a:hover {
+  color: var(--accent);
+  text-decoration: underline;
+}
+.footer-links span {
+  color: var(--text-faint);
+}
+
+/* ---------- Mobile tweaks ---------- */
+@media (max-width: 640px) {
+  .legal-hero h1 { font-size: 24px; }
+  .legal-page h2 { font-size: 17px; }
+  .legal-page table {
+    font-size: 11.5px;
+    display: block;
+    overflow-x: auto;
+    white-space: nowrap;
+  }
+  .legal-page table th,
+  .legal-page table td {
+    padding: 8px 10px;
+  }
+}
+
+
+
+
+/* ============================================================
+   Signup — Terms checkbox + Risk acknowledgment
+   ============================================================ */
+
+.terms-checkbox-wrap {
+  margin: 20px 0 14px;
+  padding: 14px 16px;
+  background: var(--panel-2);
+  border: 1px solid var(--border-2);
+  border-radius: 12px;
+  transition: all 0.2s;
+}
+
+.terms-checkbox {
+  display: flex;
+  align-items: flex-start;
+  gap: 12px;
+  cursor: pointer;
+  user-select: none;
+  position: relative;
+}
+
+.terms-checkbox input[type="checkbox"] {
+  position: absolute;
+  opacity: 0;
+  pointer-events: none;
+}
+
+.terms-checkmark {
+  position: relative;
+  flex-shrink: 0;
+  width: 20px;
+  height: 20px;
+  border: 2px solid var(--border-3);
+  border-radius: 6px;
+  background: var(--bg-2);
+  transition: all 0.15s;
+  margin-top: 1px;
+}
+.terms-checkmark::after {
+  content: '';
+  position: absolute;
+  left: 50%;
+  top: 45%;
+  width: 5px;
+  height: 10px;
+  border: solid #0a0b0f;
+  border-width: 0 2px 2px 0;
+  transform: translate(-50%, -50%) rotate(45deg) scale(0);
+  transition: transform 0.15s;
+}
+.terms-checkbox input:checked + .terms-checkmark {
+  background: var(--accent);
+  border-color: var(--accent);
+}
+.terms-checkbox input:checked + .terms-checkmark::after {
+  transform: translate(-50%, -50%) rotate(45deg) scale(1);
+}
+.terms-checkbox input:focus-visible + .terms-checkmark {
+  box-shadow: 0 0 0 3px var(--accent-glow);
+}
+
+.terms-text {
+  font-size: 13px;
+  color: var(--text-dim);
+  line-height: 1.55;
+}
+.terms-text a {
+  color: var(--accent);
+  text-decoration: underline;
+  font-weight: 600;
+}
+.terms-text a:hover { text-decoration: none; }
+
+/* Shake animation when user tries to submit without agreeing */
+@keyframes termsShake {
+  0%, 100% { transform: translateX(0); }
+  20%      { transform: translateX(-6px); }
+  40%      { transform: translateX(6px); }
+  60%      { transform: translateX(-4px); }
+  80%      { transform: translateX(4px); }
+}
+.terms-shake {
+  border-color: var(--red) !important;
+  animation: termsShake 0.5s ease;
+  box-shadow: 0 0 0 3px var(--red-glow);
+}
+
+/* Risk acknowledgment box */
+.risk-acknowledgment {
+  padding: 12px 14px;
+  margin-bottom: 18px;
+  background: rgba(246,70,93,0.05);
+  border-left: 3px solid var(--red);
+  border-radius: 8px;
+  font-size: 11.5px;
+  line-height: 1.6;
+  color: var(--text-dim);
+}
+.risk-acknowledgment strong {
+  color: var(--red);
+  font-weight: 700;
+}
