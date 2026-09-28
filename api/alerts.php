@@ -1,14 +1,6 @@
 <?php
 /**
  * /api/alerts.php
- *
- * Actions (via ?action= or POST action):
- *   GET  ?action=list                 → all alerts for current user
- *   GET  ?action=count                → just active-alert count (for badge)
- *   POST action=create  symbol, condition_type, target_price, note
- *   POST action=cancel  alert_id
- *   POST action=delete  alert_id
- *   GET  ?action=check                → evaluates all active alerts; fires any that hit
  */
 require_once __DIR__ . '/../includes/auth.php';
 require_once __DIR__ . '/../includes/market.php';
@@ -18,9 +10,7 @@ if (!$user) json_response(['error' => 'Not authenticated'], 401);
 
 $action = $_GET['action'] ?? $_POST['action'] ?? 'list';
 
-/* ============================================================
- *  LIST — all alerts for the current user
- * ============================================================ */
+/* ---------- LIST ---------- */
 if ($action === 'list') {
     $stmt = db()->prepare('
         SELECT id, symbol, condition_type, target_price, status, note,
@@ -34,7 +24,6 @@ if ($action === 'list') {
     $stmt->execute([$user['id']]);
     $rows = $stmt->fetchAll();
 
-    // Enrich with current price so the UI can show distance
     foreach ($rows as &$r) {
         $live = get_price($r['symbol']);
         $r['current_price'] = $live;
@@ -50,22 +39,17 @@ if ($action === 'list') {
     json_response(['alerts' => $rows]);
 }
 
-/* ============================================================
- *  COUNT — for the sidebar / topbar badge
- * ============================================================ */
+/* ---------- COUNT ---------- */
 if ($action === 'count') {
     $stmt = db()->prepare('SELECT COUNT(*) FROM price_alerts WHERE user_id = ? AND status = "active"');
     $stmt->execute([$user['id']]);
-    $count = (int)$stmt->fetchColumn();
-    json_response(['active' => $count]);
+    json_response(['active' => (int)$stmt->fetchColumn()]);
 }
 
-/* ============================================================
- *  CREATE
- * ============================================================ */
+/* ---------- CREATE ---------- */
 if ($action === 'create') {
     if ($_SERVER['REQUEST_METHOD'] !== 'POST') json_response(['error' => 'Method not allowed'], 405);
-    if (!hash_equals($_SESSION['csrf'] ?? '', $_POST['csrf'] ?? '')) json_response(['error' => 'CSRF mismatch'], 419);
+    csrf_verify_or_die();
 
     $symbol    = strtoupper(trim((string)($_POST['symbol'] ?? '')));
     $condition = strtolower(trim((string)($_POST['condition_type'] ?? '')));
@@ -77,11 +61,9 @@ if ($action === 'create') {
     if ($target <= 0)                                          json_response(['error' => 'Target price must be greater than zero'], 400);
     if (strlen($note) > 200) $note = substr($note, 0, 200);
 
-    // Verify symbol is one we track
     $live = get_price($symbol);
     if ($live === null)                                        json_response(['error' => 'Unknown symbol'], 400);
 
-    // Limit: no more than 30 active alerts per user
     $stmt = db()->prepare('SELECT COUNT(*) FROM price_alerts WHERE user_id = ? AND status = "active"');
     $stmt->execute([$user['id']]);
     if ((int)$stmt->fetchColumn() >= 30) {
@@ -101,12 +83,10 @@ if ($action === 'create') {
     ]);
 }
 
-/* ============================================================
- *  CANCEL
- * ============================================================ */
+/* ---------- CANCEL ---------- */
 if ($action === 'cancel') {
     if ($_SERVER['REQUEST_METHOD'] !== 'POST') json_response(['error' => 'Method not allowed'], 405);
-    if (!hash_equals($_SESSION['csrf'] ?? '', $_POST['csrf'] ?? '')) json_response(['error' => 'CSRF mismatch'], 419);
+    csrf_verify_or_die();
 
     $id = (int)($_POST['alert_id'] ?? 0);
     if ($id <= 0) json_response(['error' => 'Invalid alert'], 400);
@@ -119,12 +99,10 @@ if ($action === 'cancel') {
     json_response(['success' => true, 'message' => 'Alert cancelled']);
 }
 
-/* ============================================================
- *  DELETE — remove permanently
- * ============================================================ */
+/* ---------- DELETE ---------- */
 if ($action === 'delete') {
     if ($_SERVER['REQUEST_METHOD'] !== 'POST') json_response(['error' => 'Method not allowed'], 405);
-    if (!hash_equals($_SESSION['csrf'] ?? '', $_POST['csrf'] ?? '')) json_response(['error' => 'CSRF mismatch'], 419);
+    csrf_verify_or_die();
 
     $id = (int)($_POST['alert_id'] ?? 0);
     if ($id <= 0) json_response(['error' => 'Invalid alert'], 400);
@@ -136,11 +114,7 @@ if ($action === 'delete') {
     json_response(['success' => true, 'message' => 'Alert deleted']);
 }
 
-/* ============================================================
- *  CHECK — evaluate every active alert for the current user
- *  Called periodically by the frontend.
- *  Fires alerts whose condition is satisfied.
- * ============================================================ */
+/* ---------- CHECK ---------- */
 if ($action === 'check') {
     $stmt = db()->prepare('
         SELECT id, symbol, condition_type, target_price
@@ -183,7 +157,4 @@ if ($action === 'check') {
     json_response(['fired' => $fired]);
 }
 
-/* ============================================================
- *  Unknown action
- * ============================================================ */
 json_response(['error' => 'Unknown action: ' . $action], 400);

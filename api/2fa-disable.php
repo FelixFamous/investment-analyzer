@@ -1,7 +1,6 @@
 <?php
 /**
  * POST /api/2fa-disable.php
- * Requires the current password to disable 2FA.
  */
 require_once __DIR__ . '/../includes/auth.php';
 
@@ -9,7 +8,7 @@ if ($_SERVER['REQUEST_METHOD'] !== 'POST') json_response(['error' => 'Method not
 
 $user = current_user();
 if (!$user) json_response(['error' => 'Not authenticated'], 401);
-if (!hash_equals($_SESSION['csrf'] ?? '', $_POST['csrf'] ?? '')) json_response(['error' => 'CSRF mismatch'], 419);
+csrf_verify_or_die();
 
 $password = (string)($_POST['password'] ?? '');
 if ($password === '') json_response(['error' => 'Password required'], 400);

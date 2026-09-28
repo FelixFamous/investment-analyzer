@@ -11,7 +11,7 @@ if ($_SERVER['REQUEST_METHOD'] !== 'POST') json_response(['error' => 'Method not
 
 $user = current_user();
 if (!$user) json_response(['error' => 'Not authenticated'], 401);
-if (!hash_equals($_SESSION['csrf'] ?? '', $_POST['csrf'] ?? '')) json_response(['error' => 'CSRF mismatch'], 419);
+csrf_verify_or_die();
 
 $symbol = strtoupper(trim((string)($_POST['symbol'] ?? '')));
 if ($symbol === '') json_response(['error' => 'Symbol required'], 400);
@@ -27,14 +27,12 @@ $sl = $slRaw === '' ? null : (float)$slRaw;
 if ($tp !== null && $tp <= 0) json_response(['error' => 'Take-profit must be positive'], 400);
 if ($sl !== null && $sl <= 0) json_response(['error' => 'Stop-loss must be positive'], 400);
 
-// Sanity: TP should be above current, SL should be below current
 $live = get_price($symbol);
 if ($live !== null) {
     if ($tp !== null && $tp <= $live) json_response(['error' => 'Take-profit must be above current price (' . price_fmt($live) . ')'], 400);
     if ($sl !== null && $sl >= $live) json_response(['error' => 'Stop-loss must be below current price (' . price_fmt($live) . ')'], 400);
 }
 
-// Must hold the symbol
 $stmt = db()->prepare('SELECT id FROM holdings WHERE user_id = ? AND symbol = ? LIMIT 1');
 $stmt->execute([$user['id'], $symbol]);
 $h = $stmt->fetch();

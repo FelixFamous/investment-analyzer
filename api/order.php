@@ -2,10 +2,6 @@
 /**
  * POST /api/order.php
  * Body: symbol, side, order_type (MARKET|LIMIT|STOP), quantity, trigger_price, note, csrf
- *
- * MARKET orders execute immediately at the live price.
- * LIMIT and STOP orders queue in `pending_orders` and are evaluated by the order engine.
- * Market orders automatically mirror to the trader's copy followers.
  */
 require_once __DIR__ . '/../includes/auth.php';
 require_once __DIR__ . '/../includes/market.php';
@@ -18,11 +14,8 @@ if ($_SERVER['REQUEST_METHOD'] !== 'POST') {
 $user = current_user();
 if (!$user) json_response(['error' => 'Not authenticated'], 401);
 
-if (!hash_equals($_SESSION['csrf'] ?? '', $_POST['csrf'] ?? '')) {
-    json_response(['error' => 'CSRF mismatch'], 419);
-}
+csrf_verify_or_die();
 
-/* ---------- Input ---------- */
 $symbol    = strtoupper(trim((string)($_POST['symbol'] ?? '')));
 $side      = strtoupper(trim((string)($_POST['side'] ?? '')));
 $orderType = strtoupper(trim((string)($_POST['order_type'] ?? 'MARKET')));
@@ -31,7 +24,6 @@ $trigger   = (float)($_POST['trigger_price'] ?? 0);
 $note      = trim((string)($_POST['note'] ?? ''));
 if (strlen($note) > 200) $note = substr($note, 0, 200);
 
-/* ---------- Validate ---------- */
 if ($symbol === '')                                json_response(['error' => 'Symbol required'], 400);
 if (!in_array($side, ['BUY', 'SELL'], true))       json_response(['error' => 'Invalid side'], 400);
 if (!in_array($orderType, ['MARKET', 'LIMIT', 'STOP'], true))
@@ -41,27 +33,20 @@ if ($quantity <= 0)                                json_response(['error' => 'Qu
 $livePrice = get_price($symbol);
 if ($livePrice === null || $livePrice <= 0)        json_response(['error' => 'Unknown or unavailable symbol'], 400);
 
-// Trigger sanity for limit/stop orders
 if ($orderType !== 'MARKET') {
     if ($trigger <= 0) json_response(['error' => 'Trigger price required'], 400);
 
     if ($orderType === 'LIMIT') {
         if ($side === 'BUY'  && $trigger > $livePrice)  json_response(['error' => 'Limit buy price must be at or below market'], 400);
         if ($side === 'SELL' && $trigger < $livePrice)  json_response(['error' => 'Limit sell price must be at or above market'], 400);
-    } else { // STOP
+    } else {
         if ($side === 'BUY'  && $trigger < $livePrice)  json_response(['error' => 'Stop buy price must be at or above market'], 400);
         if ($side === 'SELL' && $trigger > $livePrice)  json_response(['error' => 'Stop sell price must be at or below market'], 400);
     }
 }
 
-/* ---------- Pre-checks for cash / holdings ---------- */
-if ($side === 'BUY') {
-    $priceForReserve = $orderType === 'MARKET' ? $livePrice : $trigger;
-    $cost = $priceForReserve * $quantity;
-    if ($cost > (float)$user['cash_balance'] + 0.00000001) {
-        json_response(['error' => 'Insufficient cash. Need ' . usd($cost) . '.'], 400);
-    }
-} else {
+// SELL-side pre-check (only one that needs it — the BUY check is inside tx)
+if ($side === 'SELL') {
     $stmt = db()->prepare('SELECT quantity FROM holdings WHERE user_id = ? AND symbol = ? LIMIT 1');
     $stmt->execute([$user['id'], $symbol]);
     $held = (float)$stmt->fetchColumn();
@@ -80,19 +65,26 @@ $pdo = db();
 
 try {
     if ($orderType === 'MARKET') {
-        /* ============================================
-         *  MARKET ORDER — execute immediately
-         * ============================================ */
         $price = $livePrice;
         $total = $price * $quantity;
 
         $pdo->beginTransaction();
 
         if ($side === 'BUY') {
+            // Lock user row before checking balance
+            $stmt = $pdo->prepare('SELECT cash_balance FROM users WHERE id = ? FOR UPDATE');
+            $stmt->execute([$user['id']]);
+            $lockedCash = (float)$stmt->fetchColumn();
+
+            if ($total > $lockedCash + 0.00000001) {
+                $pdo->rollBack();
+                json_response(['error' => 'Insufficient cash. Need ' . usd($total) . '.'], 400);
+            }
+
             $pdo->prepare('UPDATE users SET cash_balance = cash_balance - ? WHERE id = ?')
                 ->execute([$total, $user['id']]);
 
-            $stmt = $pdo->prepare('SELECT id, quantity, avg_price FROM holdings WHERE user_id = ? AND symbol = ? LIMIT 1');
+            $stmt = $pdo->prepare('SELECT id, quantity, avg_price FROM holdings WHERE user_id = ? AND symbol = ? LIMIT 1 FOR UPDATE');
             $stmt->execute([$user['id'], $symbol]);
             $h = $stmt->fetch();
 
@@ -111,12 +103,13 @@ try {
                 ->execute([$user['id'], $symbol, $quantity, $price, $total]);
 
         } else {
-            $stmt = $pdo->prepare('SELECT id, quantity, avg_price FROM holdings WHERE user_id = ? AND symbol = ? LIMIT 1');
+            $stmt = $pdo->prepare('SELECT id, quantity, avg_price FROM holdings WHERE user_id = ? AND symbol = ? LIMIT 1 FOR UPDATE');
             $stmt->execute([$user['id'], $symbol]);
             $h = $stmt->fetch();
 
             if (!$h || (float)$h['quantity'] < $quantity - 0.00000001) {
-                throw new Exception('Not enough shares to sell');
+                $pdo->rollBack();
+                json_response(['error' => 'Not enough shares to sell'], 400);
             }
 
             $pnl = ($price - (float)$h['avg_price']) * $quantity;
@@ -139,7 +132,6 @@ try {
 
         $pdo->commit();
 
-        // Copy-trade mirror — notify all active followers
         $copied = mirror_trade_to_followers((int)$user['id'], $symbol, $side, $quantity, $price);
 
         json_response([
@@ -150,9 +142,6 @@ try {
         ]);
 
     } else {
-        /* ============================================
-         *  LIMIT / STOP — queue for later
-         * ============================================ */
         $pdo->prepare('INSERT INTO pending_orders
                        (user_id, symbol, side, order_type, quantity, trigger_price, note)
                        VALUES (?, ?, ?, ?, ?, ?, ?)')

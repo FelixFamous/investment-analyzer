@@ -1,15 +1,6 @@
 <?php
 /**
  * /api/watchlist.php
- *
- * Actions:
- *   GET  ?action=list             → all starred symbols with live prices
- *   GET  ?action=has&symbol=X     → {has: true/false} — for star button state
- *   GET  ?action=count            → {count: N}
- *   POST action=toggle symbol     → add if not present, remove if present
- *   POST action=add    symbol     → force-add (idempotent)
- *   POST action=remove symbol     → force-remove (idempotent)
- *   POST action=note   symbol,note→ update the note on a watched item
  */
 require_once __DIR__ . '/../includes/auth.php';
 require_once __DIR__ . '/../includes/market.php';
@@ -19,9 +10,7 @@ if (!$user) json_response(['error' => 'Not authenticated'], 401);
 
 $action = $_GET['action'] ?? $_POST['action'] ?? 'list';
 
-/* ============================================================
- *  LIST
- * ============================================================ */
+/* ---------- LIST ---------- */
 if ($action === 'list') {
     $stmt = db()->prepare('
         SELECT symbol, note, created_at
@@ -40,9 +29,7 @@ if ($action === 'list') {
     json_response(['items' => $rows]);
 }
 
-/* ============================================================
- *  HAS — for the star button
- * ============================================================ */
+/* ---------- HAS ---------- */
 if ($action === 'has') {
     $symbol = strtoupper(trim((string)($_GET['symbol'] ?? '')));
     if ($symbol === '') json_response(['error' => 'Symbol required'], 400);
@@ -52,26 +39,20 @@ if ($action === 'has') {
     json_response(['has' => (bool)$stmt->fetchColumn()]);
 }
 
-/* ============================================================
- *  COUNT
- * ============================================================ */
+/* ---------- COUNT ---------- */
 if ($action === 'count') {
     $stmt = db()->prepare('SELECT COUNT(*) FROM watchlist WHERE user_id = ?');
     $stmt->execute([$user['id']]);
     json_response(['count' => (int)$stmt->fetchColumn()]);
 }
 
-/* ============================================================
- *  TOGGLE
- * ============================================================ */
+/* ---------- TOGGLE ---------- */
 if ($action === 'toggle') {
     if ($_SERVER['REQUEST_METHOD'] !== 'POST') json_response(['error' => 'Method not allowed'], 405);
-    if (!hash_equals($_SESSION['csrf'] ?? '', $_POST['csrf'] ?? '')) json_response(['error' => 'CSRF mismatch'], 419);
+    csrf_verify_or_die();
 
     $symbol = strtoupper(trim((string)($_POST['symbol'] ?? '')));
     if ($symbol === '') json_response(['error' => 'Symbol required'], 400);
-
-    // Must be a known symbol
     if (get_price($symbol) === null) json_response(['error' => 'Unknown symbol'], 400);
 
     $stmt = db()->prepare('SELECT id FROM watchlist WHERE user_id = ? AND symbol = ? LIMIT 1');
@@ -88,12 +69,10 @@ if ($action === 'toggle') {
     }
 }
 
-/* ============================================================
- *  ADD
- * ============================================================ */
+/* ---------- ADD ---------- */
 if ($action === 'add') {
     if ($_SERVER['REQUEST_METHOD'] !== 'POST') json_response(['error' => 'Method not allowed'], 405);
-    if (!hash_equals($_SESSION['csrf'] ?? '', $_POST['csrf'] ?? '')) json_response(['error' => 'CSRF mismatch'], 419);
+    csrf_verify_or_die();
 
     $symbol = strtoupper(trim((string)($_POST['symbol'] ?? '')));
     if ($symbol === '') json_response(['error' => 'Symbol required'], 400);
@@ -105,12 +84,10 @@ if ($action === 'add') {
     json_response(['success' => true, 'watching' => true, 'message' => $symbol . ' added']);
 }
 
-/* ============================================================
- *  REMOVE
- * ============================================================ */
+/* ---------- REMOVE ---------- */
 if ($action === 'remove') {
     if ($_SERVER['REQUEST_METHOD'] !== 'POST') json_response(['error' => 'Method not allowed'], 405);
-    if (!hash_equals($_SESSION['csrf'] ?? '', $_POST['csrf'] ?? '')) json_response(['error' => 'CSRF mismatch'], 419);
+    csrf_verify_or_die();
 
     $symbol = strtoupper(trim((string)($_POST['symbol'] ?? '')));
     if ($symbol === '') json_response(['error' => 'Symbol required'], 400);
@@ -121,12 +98,10 @@ if ($action === 'remove') {
     json_response(['success' => true, 'watching' => false, 'message' => $symbol . ' removed']);
 }
 
-/* ============================================================
- *  NOTE
- * ============================================================ */
+/* ---------- NOTE ---------- */
 if ($action === 'note') {
     if ($_SERVER['REQUEST_METHOD'] !== 'POST') json_response(['error' => 'Method not allowed'], 405);
-    if (!hash_equals($_SESSION['csrf'] ?? '', $_POST['csrf'] ?? '')) json_response(['error' => 'CSRF mismatch'], 419);
+    csrf_verify_or_die();
 
     $symbol = strtoupper(trim((string)($_POST['symbol'] ?? '')));
     $note   = trim((string)($_POST['note'] ?? ''));
@@ -141,7 +116,4 @@ if ($action === 'note') {
     json_response(['success' => true, 'message' => 'Note saved']);
 }
 
-/* ============================================================
- *  Unknown
- * ============================================================ */
 json_response(['error' => 'Unknown action: ' . $action], 400);

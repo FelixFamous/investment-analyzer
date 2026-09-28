@@ -44,25 +44,27 @@ function execute_dca_buy(array $rb): bool
         return false;
     }
 
-    $stmt = $pdo->prepare('SELECT cash_balance FROM users WHERE id = ? LIMIT 1');
-    $stmt->execute([$userId]);
-    $cash = (float)$stmt->fetchColumn();
-
-    if ($cash < $amountUsd) {
-        schedule_next($rb, true);
-        return false;
-    }
-
     $quantity = $amountUsd / $price;
 
     try {
         $pdo->beginTransaction();
 
+        // Lock user row before checking balance
+        $stmt = $pdo->prepare('SELECT cash_balance FROM users WHERE id = ? FOR UPDATE');
+        $stmt->execute([$userId]);
+        $cash = (float)$stmt->fetchColumn();
+
+        if ($cash < $amountUsd) {
+            $pdo->rollBack();
+            schedule_next($rb, true);
+            return false;
+        }
+
         $pdo->prepare('UPDATE users SET cash_balance = cash_balance - ? WHERE id = ?')
             ->execute([$amountUsd, $userId]);
 
         $stmt = $pdo->prepare('SELECT id, quantity, avg_price FROM holdings
-                               WHERE user_id = ? AND symbol = ? LIMIT 1');
+                               WHERE user_id = ? AND symbol = ? LIMIT 1 FOR UPDATE');
         $stmt->execute([$userId, $symbol]);
         $h = $stmt->fetch();
 

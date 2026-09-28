@@ -12,6 +12,8 @@ if ($_SERVER['REQUEST_METHOD'] !== 'POST') {
 $user = current_user();
 if (!$user) json_response(['error' => 'Not authenticated'], 401);
 
+csrf_verify_or_die();
+
 // KYC gate
 $kycStatus = $user['kyc_status'] ?? 'none';
 if ($kycStatus !== 'approved') {
@@ -21,10 +23,6 @@ if ($kycStatus !== 'approved') {
             ? 'Your KYC was rejected. Please re-submit to enable deposits.'
             : 'Complete identity verification to enable deposits.');
     json_response(['error' => $msg, 'kyc_required' => true], 403);
-}
-
-if (!hash_equals($_SESSION['csrf'] ?? '', $_POST['csrf'] ?? '')) {
-    json_response(['error' => 'CSRF mismatch'], 419);
 }
 
 $amount = (float)($_POST['amount'] ?? 0);

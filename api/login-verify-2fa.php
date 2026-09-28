@@ -14,9 +14,7 @@ if ($_SERVER['REQUEST_METHOD'] !== 'POST') {
     json_response(['error' => 'Method not allowed'], 405);
 }
 
-if (!hash_equals($_SESSION['csrf'] ?? '', $_POST['csrf'] ?? '')) {
-    json_response(['error' => 'CSRF mismatch'], 419);
-}
+csrf_verify_or_die();
 
 // Must be in pending-2FA state
 $pendingId = (int)($_SESSION['pending_2fa_user_id'] ?? 0);
@@ -31,7 +29,7 @@ if ($pendingAt > 0 && (time() - $pendingAt) > 600) {
 }
 
 $code = trim((string)($_POST['code'] ?? ''));
-$code = preg_replace('/[\s-]+/', '', $code); // allow "abc1-def2" / spaces for recovery codes
+$code = (string) preg_replace('/[\s-]+/', '', $code);
 
 if ($code === '') {
     json_response(['error' => 'Enter the code from your authenticator app.'], 400);
@@ -50,32 +48,53 @@ if (!$user || (int)$user['totp_enabled'] !== 1 || empty($user['totp_secret'])) {
 
 $verified = false;
 $usedRecovery = false;
+$remainingCodes = 0;
 
 /* ---------- Path A: standard 6-digit TOTP ---------- */
 if (preg_match('/^\d{6}$/', $code)) {
-    if (TOTP::verifyCode($user['totp_secret'], $code)) {
+    if (TOTP::verifyCode((string)$user['totp_secret'], $code)) {
         $verified = true;
     }
 }
 
 /* ---------- Path B: recovery code (format xxxx-xxxx) ---------- */
 if (!$verified && !empty($user['totp_recovery'])) {
-    $candidates = json_decode($user['totp_recovery'], true);
-    if (is_array($candidates)) {
-        // Normalize input: remove dashes so users can type with or without them
-        $inputDashless = str_replace('-', '', strtolower($code));
+    /** @var mixed $decoded */
+    $decoded = json_decode((string)$user['totp_recovery'], true);
+
+    /** @var string[] $candidates */
+    $candidates = [];
+    if (is_array($decoded)) {
+        foreach ($decoded as $h) {
+            if (is_string($h) && $h !== '') {
+                $candidates[] = $h;
+            }
+        }
+    }
+
+    if ($candidates !== []) {
+        // Normalize input: lowercase first, then strip dashes.
+        /** @var string $codeLower */
+        $codeLower = strtolower((string)$code);
+
+        /** @var string $inputDashless */
+        $inputDashless = (string) str_replace('-', '', $codeLower);
 
         foreach ($candidates as $idx => $hash) {
-            // Reinsert dash for the "xxxx-xxxx" pattern the user typed
+            /** @var string $hashStr */
+            $hashStr = (string)$hash;
+
+            /** @var string $candidate */
             $candidate = substr($inputDashless, 0, 4) . '-' . substr($inputDashless, 4, 4);
 
-            if (password_verify($candidate, $hash)) {
+            if (password_verify($candidate, $hashStr)) {
                 $verified = true;
                 $usedRecovery = true;
 
                 // One-time use: remove this code from the array
                 unset($candidates[$idx]);
                 $candidates = array_values($candidates);
+                $remainingCodes = count($candidates);
 
                 db()->prepare('UPDATE users SET totp_recovery = ? WHERE id = ?')
                     ->execute([json_encode($candidates), $pendingId]);
@@ -95,15 +114,9 @@ login_user($pendingId);
 unset($_SESSION['pending_2fa_user_id'], $_SESSION['pending_2fa_at']);
 
 if ($usedRecovery) {
-    // Warn the user that they've used one recovery code
-    $remaining = 0;
-    if (!empty($user['totp_recovery'])) {
-        $remaining = count(json_decode($user['totp_recovery'], true) ?: []) - 1;
-        if ($remaining < 0) $remaining = 0;
-    }
     json_response([
         'success' => true,
-        'message' => 'Signed in via recovery code (' . $remaining . ' remaining). Please generate new codes soon.',
+        'message' => 'Signed in via recovery code (' . $remainingCodes . ' remaining). Please generate new codes soon.',
     ]);
 }
 

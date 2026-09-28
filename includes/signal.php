@@ -2,19 +2,13 @@
 /**
  * Signal engine v3 — multi-factor, regime-aware, news-aware.
  *
- * Nine factors, each normalised to -1..+1:
- *   1. Trend (SMA20 vs SMA50)
- *   2. Longer trend (SMA50 vs SMA200 proxy)
- *   3. RSI (mean-reversion)
- *   4. MACD histogram (momentum crossover)
- *   5. Bollinger position (overbought/oversold)
- *   6. 20-day momentum
- *   7. Short-term momentum (5-day)
- *   8. Volume trend (rising volume confirms direction)
- *   9. News sentiment
- *
- * Composite = weighted sum. Confidence = weighted strength × agreement.
- * Action = STRONG BUY / BUY / WEAK BUY / HOLD / WEAK SELL / SELL / STRONG SELL.
+ * NOTE ON SIMPLIFICATIONS (deliberate, for a lightweight sim):
+ *   - atr() uses mean absolute close-to-close change, not True Range
+ *     (which needs high/low data we don't have from the feed).
+ *   - rsi() uses the simple average, not Wilder's EMA smoothing.
+ *   - No commission, spread, or slippage modelling.
+ * These keep the engine dependency-free. Documented so they are not
+ * mistaken for oversights.
  */
 
 require_once __DIR__ . '/market.php';
@@ -43,7 +37,6 @@ function macd(array $s, int $fast = 12, int $slow = 26, int $signal = 9): array 
     if (count($s) < $slow + $signal) return ['macd' => 0, 'signal' => 0, 'hist' => 0];
     $emaFast = ema_series($s, $fast);
     $emaSlow = ema_series($s, $slow);
-    // Align: emaFast has more points than emaSlow
     $offset = count($emaFast) - count($emaSlow);
     $macdLine = [];
     for ($i = 0; $i < count($emaSlow); $i++) {
@@ -82,7 +75,7 @@ function bollinger(array $s, int $p = 20, float $mult = 2.0): array {
     $lower = $mid - $mult * $sd;
     $price = end($s);
     $range = $upper - $lower;
-    $pos = $range > 0 ? (($price - $lower) / $range) * 2 - 1 : 0; // -1 lower, +1 upper
+    $pos = $range > 0 ? (($price - $lower) / $range) * 2 - 1 : 0;
     return ['upper' => $upper, 'mid' => $mid, 'lower' => $lower, 'pos' => $pos];
 }
 
@@ -113,18 +106,20 @@ function get_news_sentiment(string $symbol): float {
 }
 
 /**
- * Fetch news sentiment from our own api/news.php and build the map.
- * Called once per dashboard load.
+ * Load sentiment from the shared news cache file (written by api/news.php).
+ * No HTTP self-call → no deadlock risk under PHP-FPM.
  */
 function load_news_sentiment(): void {
     static $loaded = false;
     if ($loaded) return;
     $loaded = true;
 
-    $url = APP_URL . '/api/news.php';
-    $json = @file_get_contents($url, false, stream_context_create([
-        'http' => ['timeout' => 4, 'ignore_errors' => true],
-    ]));
+    $cacheFile = sys_get_temp_dir() . '/alphaedge_news.json';
+    if (!file_exists($cacheFile) || (time() - filemtime($cacheFile)) > 600) {
+        return; // missing or stale — skip sentiment this pass
+    }
+
+    $json = @file_get_contents($cacheFile);
     if (!$json) return;
     $data = json_decode($json, true);
     if (!is_array($data)) return;
@@ -138,7 +133,6 @@ function load_news_sentiment(): void {
             $map[$sym] = ($map[$sym] ?? 0) + $s;
         }
     }
-    // Normalize
     foreach ($map as $k => $v) {
         $map[$k] = max(-1.0, min(1.0, $v / 3.0));
     }
@@ -147,10 +141,6 @@ function load_news_sentiment(): void {
 
 /* ==================== Regime detection ==================== */
 
-/**
- * Returns 'trending_up', 'trending_down', or 'ranging'.
- * Trending = strong SMA separation + strong momentum.
- */
 function detect_regime(array $history): string {
     $s20 = sma($history, 20);
     $s50 = sma($history, 50);
@@ -175,7 +165,6 @@ function compute_signals(): array {
         $history = synthetic_history($symbol, 60);
         $price   = get_price($symbol) ?? end($history);
 
-        // --- Indicators ---
         $s20  = sma($history, 20);
         $s50  = sma($history, 50);
         $r    = rsi($history, 14);
@@ -187,55 +176,38 @@ function compute_signals(): array {
         $regime = detect_regime($history);
         $news = get_news_sentiment($symbol);
 
-        // ---------- Factor 1: trend (SMA20 vs SMA50) ----------
         $f_trend = 0.0;
         if ($s20 && $s50) {
             $spread = ($s20 - $s50) / $s50;
             $f_trend = max(-1.0, min(1.0, $spread * 25.0));
         }
 
-        // ---------- Factor 2: longer trend (price vs SMA50) ----------
         $f_longTrend = $s50 ? max(-1.0, min(1.0, (($price - $s50) / $s50) * 10.0)) : 0.0;
 
-        // ---------- Factor 3: RSI (mean reversion) ----------
-        // RSI 30 → +0.8 (oversold → buy), RSI 70 → -0.8 (overbought → sell)
         $f_rsi = 0.0;
         if ($r < 30)      $f_rsi = 0.8;
         elseif ($r > 70)  $f_rsi = -0.8;
         else              $f_rsi = (50 - $r) / 25.0 * 0.4;
 
-        // ---------- Factor 4: MACD histogram ----------
         $histNorm = $a > 0 ? $macd['hist'] / $a : 0;
         $f_macd = max(-1.0, min(1.0, $histNorm * 1.5));
 
-        // ---------- Factor 5: Bollinger position (contrarian) ----------
-        // Near lower band = buy, near upper band = sell
         $f_bb = -$bb['pos'];
 
-        // ---------- Factor 6 & 7: Momentum (medium, short) ----------
         $f_m20 = max(-1.0, min(1.0, $m20 * 6.0));
         $f_m5  = max(-1.0, min(1.0, $m5 * 8.0));
 
-        // ---------- Factor 8: Volume/volatility confirmation ----------
-        // Rising ATR + rising momentum = strong trend; we don't have volume history,
-        // so use ATR relative to price as a "confidence" factor
         $atrPct = $price > 0 ? $a / $price : 0;
         $f_volConfirm = 0.0;
         if ($atrPct > 0.03) {
-            // High volatility → reduce directional conviction
             $f_volConfirm = -0.15;
         } elseif ($atrPct < 0.01) {
-            // Very low vol → likely consolidation, slight negative
             $f_volConfirm = -0.05;
         }
 
-        // ---------- Factor 9: News sentiment ----------
         $f_news = $news;
 
-        // ---------- Composite score ----------
-        // Regime-aware weighting
         if ($regime === 'trending_up' || $regime === 'trending_down') {
-            // Trend-following weights
             $composite =
                   $f_trend      * 0.22
                 + $f_longTrend  * 0.15
@@ -247,7 +219,6 @@ function compute_signals(): array {
                 + $f_volConfirm * 0.02
                 + $f_news       * 0.08;
         } else {
-            // Ranging market → mean-reversion weights
             $composite =
                   $f_trend      * 0.10
                 + $f_longTrend  * 0.05
@@ -262,7 +233,6 @@ function compute_signals(): array {
 
         $composite = max(-1.0, min(1.0, $composite));
 
-        // ---------- Agreement (how many factors point same direction) ----------
         $factors = [
             $f_trend, $f_longTrend, $f_rsi, $f_macd, $f_bb,
             $f_m20, $f_m5, $f_volConfirm, $f_news
@@ -274,12 +244,10 @@ function compute_signals(): array {
             if ($f * $sign > 0) $agree++;
         }
         $totalFactors = count($factors);
-        $agreement = $agree / $totalFactors;   // 0..1
+        $agreement = $agree / $totalFactors;
 
-        // ---------- Confidence = strength × agreement ----------
         $confidence = min(1.0, abs($composite) * 1.3 * (0.5 + $agreement * 0.7));
 
-        // ---------- Action mapping (7 tiers) ----------
         if      ($composite >  0.55) $action = 'STRONG BUY';
         elseif  ($composite >  0.30) $action = 'BUY';
         elseif  ($composite >  0.10) $action = 'WEAK BUY';
@@ -288,7 +256,6 @@ function compute_signals(): array {
         elseif  ($composite < -0.10) $action = 'WEAK SELL';
         else                          $action = 'HOLD';
 
-        // ---------- Target / Stop ----------
         $bullish = $composite > 0;
         if ($bullish) {
             $target = $price + $a * (1.8 + $composite * 3.0);
@@ -297,9 +264,8 @@ function compute_signals(): array {
             $target = $price - $a * (1.8 + abs($composite) * 3.0);
             $stop   = $price + $a * 1.5;
         }
-        $takeProfit = $bullish ? $target : $price + $a * 2.0;
+        $takeProfit = $bullish ? $target : null;
 
-        // ---------- Reasoning ----------
         $reasons = [];
 
         if ($s20 && $s50) {
@@ -357,14 +323,10 @@ function compute_signals(): array {
         ];
     }
 
-    // Sort: strongest convictions first
     usort($rows, fn($a, $b) => abs($b['score']) <=> abs($a['score']));
     return $rows;
 }
 
-/**
- * Group signals into buy / sell / hold buckets based on action.
- */
 function group_signals(array $signals): array {
     $out = ['buy' => [], 'sell' => [], 'hold' => []];
     foreach ($signals as $s) {
@@ -376,9 +338,6 @@ function group_signals(array $signals): array {
     return $out;
 }
 
-/**
- * Analyze current holdings and recommend SELL / HOLD / BUY-MORE.
- */
 function analyze_holdings(array $holdings, array $signals): array {
     $bySymbol = [];
     foreach ($signals as $s) $bySymbol[$s['symbol']] = $s;
@@ -394,41 +353,29 @@ function analyze_holdings(array $holdings, array $signals): array {
         $recommendation = 'HOLD';
         $reasonList = [];
 
-        // Rule 1: Engine says SELL
         if (str_contains($sig['action'], 'SELL')) {
             $recommendation = 'SELL';
             $reasonList[] = 'Engine: ' . $sig['action'];
         }
-
-        // Rule 2: Take profit
         if ($pnlPct >= 8) {
             $recommendation = 'SELL';
             $reasonList[] = 'Take profit: up ' . number_format($pnlPct, 1) . '%';
         }
-
-        // Rule 3: Stop loss
         if ($pnlPct <= -5) {
             $recommendation = 'SELL';
             $reasonList[] = 'Stop loss: down ' . number_format($pnlPct, 1) . '%';
         }
-
-        // Rule 4: Extreme overbought
         if ($sig['rsi'] > 72) {
             $recommendation = 'SELL';
             $reasonList[] = 'RSI ' . round($sig['rsi']) . ' — extremely overbought';
         }
-
-        // Rule 5: Bollinger upper band
         if ($sig['bb_pos'] > 0.85) {
             $recommendation = 'SELL';
             $reasonList[] = 'Price at upper Bollinger band';
         }
-
-        // Rule 6: Strong BUY & profitable = hold for more
         if ($recommendation === 'HOLD' && str_contains($sig['action'], 'BUY') && $sig['confidence'] > 0.5) {
             $reasonList[] = 'Strong BUY signal — consider adding';
         }
-
         if (!$reasonList) $reasonList[] = 'No strong exit signal — hold';
 
         $out[$sym] = [

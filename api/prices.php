@@ -1,9 +1,17 @@
 <?php
 /**
  * GET /api/prices.php?symbols=AAPL,MSFT,NVDA
- * Server-side proxy to Yahoo Finance. Bypasses browser CORS entirely.
- * Returns clean JSON: { "AAPL": {price, change, changePct, high, low}, ... }
+ * Server-side proxy to Yahoo Finance. Requires login.
+ * Cached for 15 seconds to prevent API quota burn.
  */
+
+require_once __DIR__ . '/../includes/auth.php';
+
+if (!current_user()) {
+    http_response_code(401);
+    echo json_encode(['error' => 'Not authenticated']);
+    exit;
+}
 
 header('Content-Type: application/json; charset=utf-8');
 header('Cache-Control: no-store');
@@ -13,6 +21,16 @@ $symbols = array_filter(array_map('trim', explode(',', $symbolsParam)));
 
 if (!$symbols) {
     echo json_encode(['error' => 'No symbols requested']);
+    exit;
+}
+
+// Cache key includes sorted symbol list
+sort($symbols);
+$cacheKey  = md5(implode(',', $symbols));
+$cacheFile = sys_get_temp_dir() . '/alphaedge_prices_' . $cacheKey . '.json';
+
+if (file_exists($cacheFile) && (time() - filemtime($cacheFile)) < 15) {
+    readfile($cacheFile);
     exit;
 }
 
@@ -46,9 +64,10 @@ foreach ($symbols as $sym) {
     ];
 }
 
-echo json_encode($out);
+$payload = json_encode($out);
+@file_put_contents($cacheFile, $payload);
+echo $payload;
 
-/* ---------- helper: fetch with cURL or file_get_contents ---------- */
 function yahoo_fetch(string $url): ?string
 {
     $headers = [

@@ -17,9 +17,7 @@ if (!$user) {
     json_response(['error' => 'Not authenticated'], 401);
 }
 
-if (!hash_equals($_SESSION['csrf'] ?? '', $_POST['csrf'] ?? '')) {
-    json_response(['error' => 'CSRF token mismatch'], 419);
-}
+csrf_verify_or_die();
 
 $symbol   = strtoupper(post('symbol'));
 $quantity = (float)($_POST['quantity'] ?? 0);
@@ -34,21 +32,26 @@ if ($price === null) {
 }
 
 $cost = $price * $quantity;
-if ($cost > (float)$user['cash_balance'] + 0.00000001) {
-    json_response(['error' => 'Insufficient cash. Need ' . usd($cost) . '.'], 400);
-}
 
 try {
     $pdo = db();
     $pdo->beginTransaction();
 
-    // Deduct cash
+    // Lock user row before checking balance (prevents TOCTOU)
+    $stmt = $pdo->prepare('SELECT cash_balance FROM users WHERE id = ? FOR UPDATE');
+    $stmt->execute([$user['id']]);
+    $cash = (float)$stmt->fetchColumn();
+
+    if ($cost > $cash + 0.00000001) {
+        $pdo->rollBack();
+        json_response(['error' => 'Insufficient cash. Need ' . usd($cost) . '.'], 400);
+    }
+
     $pdo->prepare('UPDATE users SET cash_balance = cash_balance - ? WHERE id = ?')
         ->execute([$cost, $user['id']]);
 
-    // Upsert holding
     $stmt = $pdo->prepare('SELECT id, quantity, avg_price FROM holdings
-                           WHERE user_id = ? AND symbol = ? LIMIT 1');
+                           WHERE user_id = ? AND symbol = ? LIMIT 1 FOR UPDATE');
     $stmt->execute([$user['id'], $symbol]);
     $holding = $stmt->fetch();
 
@@ -63,14 +66,12 @@ try {
             ->execute([$user['id'], $symbol, $quantity, $price]);
     }
 
-    // Log trade
     $pdo->prepare('INSERT INTO trades (user_id, symbol, side, quantity, price, total)
                    VALUES (?, ?, ?, ?, ?, ?)')
         ->execute([$user['id'], $symbol, 'BUY', $quantity, $price, $cost]);
 
     $pdo->commit();
 
-    // Copy-trade mirror
     $copied = mirror_trade_to_followers((int)$user['id'], $symbol, 'BUY', $quantity, $price);
 
     json_response([

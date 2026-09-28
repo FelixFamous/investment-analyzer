@@ -2,7 +2,6 @@
 /**
  * POST /api/set-timezone.php
  * Body: timezone, csrf
- * Updates the current user's timezone.
  */
 require_once __DIR__ . '/../includes/auth.php';
 
@@ -13,9 +12,7 @@ if ($_SERVER['REQUEST_METHOD'] !== 'POST') {
 $user = current_user();
 if (!$user) json_response(['error' => 'Not authenticated'], 401);
 
-if (!hash_equals($_SESSION['csrf'] ?? '', $_POST['csrf'] ?? '')) {
-    json_response(['error' => 'CSRF mismatch'], 419);
-}
+csrf_verify_or_die();
 
 $tz = trim((string)($_POST['timezone'] ?? ''));
 

@@ -1,118 +1,163 @@
 <?php
-require_once __DIR__ . '/includes/auth.php';
+/**
+ * GET /api/news.php
+ * Returns crypto + stock news from Yahoo Finance with naive sentiment.
+ * Cached to a file for 5 minutes to prevent API budget burn.
+ */
 
-$user = require_login();
+header('Content-Type: application/json; charset=utf-8');
+header('Cache-Control: no-store');
 
-$pageTitle = 'News';
-require __DIR__ . '/includes/header.php';
-?>
+$cacheFile = sys_get_temp_dir() . '/alphaedge_news.json';
+$ttl = 300;
 
-<div class="summary-grid">
-  <div class="card">
-    <div class="card-label">News Sources</div>
-    <div class="card-value" style="font-size:20px;">Crypto + Stocks</div>
-    <div class="card-sub">Yahoo Finance + crypto feeds</div>
-  </div>
-  <div class="card">
-    <div class="card-label">Sentiment Engine</div>
-    <div class="card-value" style="font-size:20px;">Keyword AI</div>
-    <div class="card-sub">Bullish / Bearish per headline</div>
-  </div>
-  <div class="card">
-    <div class="card-label">Refresh</div>
-    <div class="card-value" style="font-size:20px;">Every 5 min</div>
-    <div class="card-sub">Auto-updates in background</div>
-  </div>
-  <div class="card">
-    <div class="card-label">Feed Status</div>
-    <div class="card-value" style="font-size:16px;">
-      <span class="badge badge-live">live</span>
-    </div>
-    <div class="card-sub">Streaming headlines</div>
-  </div>
-</div>
+if (file_exists($cacheFile) && (time() - filemtime($cacheFile)) < $ttl) {
+    readfile($cacheFile);
+    exit;
+}
 
-<div class="main-grid">
-  <div class="panel">
-    <div class="panel-header">
-      <h2>📰 Market Headlines</h2>
-      <div class="tabs" style="margin:0;padding:2px;">
-        <button class="tab active" data-news-tab="all"    style="padding:4px 10px;font-size:11px;">All</button>
-        <button class="tab"        data-news-tab="crypto" style="padding:4px 10px;font-size:11px;">Crypto</button>
-        <button class="tab"        data-news-tab="stock"  style="padding:4px 10px;font-size:11px;">Stocks</button>
-      </div>
-    </div>
-    <div id="newsFeed">
-      <div class="empty-state">Loading news…</div>
-    </div>
-  </div>
+$crypto = fetch_crypto_news();
+$stocks = fetch_stock_news();
 
-  <div class="panel">
-    <div class="panel-header">
-      <h2>🔥 Top Movers</h2>
-      <span class="badge">live</span>
-    </div>
-    <div id="topMovers">
-      <div class="empty-state">Loading live data…</div>
-    </div>
-  </div>
-</div>
+foreach ($crypto as &$n) $n['sentiment'] = simple_sentiment($n['title'] ?? '');
+foreach ($stocks as &$n) $n['sentiment'] = simple_sentiment($n['title'] ?? '');
+unset($n);
 
-<script>
-// Render top movers from live prices
-(function () {
-  function fmtPrice(n) {
-    n = Number(n);
-    if (n >= 1000) return '$' + n.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
-    if (n >= 1)    return '$' + n.toFixed(2);
-    if (n >= 0.01) return '$' + n.toFixed(4);
-    return '$' + n.toFixed(7);
-  }
-  function fmtPct(n) { return (n >= 0 ? '+' : '') + Number(n).toFixed(2) + '%'; }
+$payload = json_encode([
+    'crypto' => array_slice($crypto, 0, 12),
+    'stocks' => array_slice($stocks, 0, 12),
+]);
 
-  function renderTopMovers() {
-    const el = document.getElementById('topMovers');
-    if (!el || !window.LivePrices) return;
+@file_put_contents($cacheFile, $payload);
+echo $payload;
 
-    const all = window.LivePrices.getAll();
-    const rows = Object.values(all)
-      .filter(p => p && typeof p.changePct === 'number')
-      .sort((a, b) => Math.abs(b.changePct) - Math.abs(a.changePct))
-      .slice(0, 10);
+/* ---------- Crypto news via Yahoo Finance ---------- */
+function fetch_crypto_news(): array
+{
+    $symbols = ['BTC-USD', 'ETH-USD', 'SOL-USD', 'DOGE-USD'];
+    $out = [];
 
-    if (!rows.length) {
-      el.innerHTML = '<div class="empty-state">Waiting for live prices…</div>';
-      return;
+    foreach ($symbols as $sym) {
+        $url = 'https://query1.finance.yahoo.com/v1/finance/search?q='
+             . urlencode($sym) . '&newsCount=4';
+        $body = http_get($url);
+        if (!$body) continue;
+
+        $data = json_decode($body, true);
+        $items = $data['news'] ?? [];
+        foreach ($items as $item) {
+            $title = $item['title'] ?? '';
+            if (!$title) continue;
+
+            $lower = strtolower($title);
+            $looksCrypto = preg_match('/bitcoin|ethereum|solana|crypto|btc|eth|sol|doge|blockchain|token|defi|altcoin/i', $lower);
+            if (!$looksCrypto) continue;
+
+            $out[] = [
+                'title'  => $title,
+                'source' => $item['publisher'] ?? 'Yahoo Finance',
+                'url'    => $item['link'] ?? '#',
+                'time'   => isset($item['providerPublishTime'])
+                            ? date('c', $item['providerPublishTime'])
+                            : date('c'),
+                'type'   => 'crypto',
+                'symbol' => str_replace('-USD', '', $sym),
+            ];
+        }
+    }
+    return $out;
+}
+
+/* ---------- Stock news via Yahoo Finance ---------- */
+function fetch_stock_news(): array
+{
+    $symbols = ['AAPL', 'MSFT', 'NVDA', 'TSLA'];
+    $out = [];
+
+    foreach ($symbols as $sym) {
+        $url = 'https://query1.finance.yahoo.com/v1/finance/search?q='
+             . urlencode($sym) . '&newsCount=4';
+        $body = http_get($url);
+        if (!$body) continue;
+
+        $data = json_decode($body, true);
+        $items = $data['news'] ?? [];
+        foreach ($items as $item) {
+            $title = $item['title'] ?? '';
+            if (!$title) continue;
+            $out[] = [
+                'title'  => $title,
+                'source' => $item['publisher'] ?? 'Yahoo Finance',
+                'url'    => $item['link'] ?? '#',
+                'time'   => isset($item['providerPublishTime'])
+                            ? date('c', $item['providerPublishTime'])
+                            : date('c'),
+                'type'   => 'stock',
+                'symbol' => $sym,
+            ];
+        }
+    }
+    return $out;
+}
+
+/* ---------- Helpers ---------- */
+function http_get(string $url): ?string
+{
+    $headers = ['User-Agent: Mozilla/5.0', 'Accept: application/json'];
+
+    if (function_exists('curl_init')) {
+        $ch = curl_init($url);
+        curl_setopt_array($ch, [
+            CURLOPT_RETURNTRANSFER => true,
+            CURLOPT_TIMEOUT        => 6,
+            CURLOPT_CONNECTTIMEOUT => 3,
+            CURLOPT_FOLLOWLOCATION => true,
+            CURLOPT_SSL_VERIFYPEER => true,
+            CURLOPT_HTTPHEADER     => $headers,
+        ]);
+        $body = curl_exec($ch);
+        $code = curl_getinfo($ch, CURLINFO_HTTP_CODE);
+        curl_close($ch);
+        return ($body && $code === 200) ? $body : null;
     }
 
-    el.innerHTML = rows.map(p => {
-      const cls = p.changePct >= 0 ? 'pos' : 'neg';
-      const arrow = p.changePct >= 0 ? '▲' : '▼';
-      return `
-        <div class="watchlist-row" data-buy="${p.symbol}" data-price="${p.price}" title="Click to buy ${p.symbol}">
-          <div class="watchlist-icon" style="background:${p.color};">${p.symbol.slice(0,2)}</div>
-          <div class="watchlist-name">
-            ${p.symbol}
-            <small>${p.name}</small>
-          </div>
-          <div class="watchlist-price">${fmtPrice(p.price)}</div>
-          <div class="watchlist-change ${cls}">${arrow} ${fmtPct(p.changePct)}</div>
-        </div>
-      `;
-    }).join('');
-  }
+    $ctx = stream_context_create([
+        'http' => [
+            'timeout'       => 6,
+            'ignore_errors' => true,
+            'header'        => implode("\r\n", $headers),
+        ],
+    ]);
+    $body = @file_get_contents($url, false, $ctx);
+    return $body === false ? null : $body;
+}
 
-  document.addEventListener('DOMContentLoaded', () => {
-    // Wait a tick for LivePrices to populate
-    if (window.LivePrices) {
-      LivePrices.subscribe(renderTopMovers);
-      renderTopMovers();
-    } else {
-      window.addEventListener('liveprices:update', renderTopMovers);
-      setTimeout(renderTopMovers, 1000);
+/**
+ * Word-boundary sentiment. Removed ambiguous words (up, down, low, high,
+ * buy, sell, rise) that false-positive inside other words.
+ */
+function simple_sentiment(string $title): float
+{
+    $title = strtolower($title);
+
+    $pos = ['surge', 'soars', 'rally', 'rallies', 'gain', 'gains', 'beat', 'beats',
+            'record', 'bullish', 'jump', 'jumps', 'launch', 'launches', 'partnership',
+            'approve', 'approved', 'growth', 'profit', 'breakout'];
+    $neg = ['drop', 'drops', 'fall', 'falls', 'crash', 'crashes', 'plunge', 'plunges',
+            'loss', 'losses', 'miss', 'misses', 'bearish', 'decline', 'declines',
+            'hack', 'hacked', 'lawsuit', 'ban', 'banned', 'fear', 'warning',
+            'concern', 'concerns', 'slump', 'slumps'];
+
+    $posCount = 0;
+    foreach ($pos as $w) {
+        if (preg_match('/\b' . preg_quote($w, '/') . '\b/i', $title)) $posCount++;
     }
-  });
-})();
-</script>
+    $negCount = 0;
+    foreach ($neg as $w) {
+        if (preg_match('/\b' . preg_quote($w, '/') . '\b/i', $title)) $negCount++;
+    }
 
-<?php require __DIR__ . '/includes/footer.php'; ?>
+    $score = $posCount - $negCount;
+    if ($score === 0) return 0.0;
+    return max(-1.0, min(1.0, $score / 3.0));
+}

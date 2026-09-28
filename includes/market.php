@@ -3,15 +3,12 @@
  * Market data provider.
  *
  * Uses Finnhub for live quotes when FINNHUB_API_KEY is set.
- * When the key is missing OR the API call fails, falls back to a
- * deterministic simulated price so the whole app still works offline.
- *
- * Free tier: https://finnhub.io  (60 req/min)
+ * Falls back to a deterministic simulated price when the key is
+ * missing or the API call fails, so the whole app still works offline.
  */
 
 require_once __DIR__ . '/../config/config.php';
 
-/** Assets we track and analyze. */
 function tracked_assets(): array
 {
     return [
@@ -28,23 +25,30 @@ function tracked_assets(): array
 
 /**
  * Get the current price for a symbol.
- * Returns null only when the symbol is not in our tracked list.
+ * Cached for 20 seconds per request to avoid blowing API quotas.
  */
 function get_price(string $symbol): ?float
 {
-    $symbol = strtoupper($symbol);
-    $assets = tracked_assets();
+    static $cache = [];
+    $key = strtoupper($symbol);
+    $now = time();
 
+    if (isset($cache[$key]) && $now - $cache[$key]['t'] < 20) {
+        return $cache[$key]['p'];
+    }
+
+    $assets = tracked_assets();
     $found = null;
     foreach ($assets as $a) {
-        if ($a['symbol'] === $symbol) { $found = $a; break; }
+        if ($a['symbol'] === $key) { $found = $a; break; }
     }
     if (!$found) return null;
 
-    $live = finnhub_quote($symbol);
-    if ($live !== null) return $live;
+    $live  = finnhub_quote($key);
+    $price = $live ?? simulated_price($key, (float)$found['base'], (float)$found['vol']);
 
-    return simulated_price($symbol, (float)$found['base'], (float)$found['vol']);
+    $cache[$key] = ['p' => $price, 't' => $now];
+    return $price;
 }
 
 /**
@@ -57,7 +61,6 @@ function finnhub_quote(string $symbol): ?float
     $url = 'https://finnhub.io/api/v1/quote?symbol=' . urlencode($symbol)
          . '&token=' . urlencode(FINNHUB_API_KEY);
 
-    // ---- Prefer cURL if available ----
     if (function_exists('curl_init')) {
         $ch = curl_init($url);
         curl_setopt_array($ch, [
@@ -77,7 +80,6 @@ function finnhub_quote(string $symbol): ?float
         return null;
     }
 
-    // ---- Fallback: file_get_contents ----
     $ctx = stream_context_create([
         'http' => ['timeout' => 5, 'ignore_errors' => true],
         'ssl'  => ['verify_peer' => true, 'verify_peer_name' => true],
@@ -91,28 +93,27 @@ function finnhub_quote(string $symbol): ?float
 }
 
 /**
- * Deterministic pseudo-price that drifts slowly and realistically,
- * seeded by symbol + hour so different requests within the same hour
- * see the same value (looks like a real quote, but is generated).
+ * Deterministic pseudo-price with two waves:
+ *   - slow: multi-day drift, moves every few hours
+ *   - fast: 15-minute-resolution wiggle, smooth across calls
+ * No hour-boundary jumps, no flat spots.
  */
 function simulated_price(string $symbol, float $base, float $vol): float
 {
     $seed = crc32($symbol);
-    $hour = (int)floor(time() / 3600);
-    $day  = (int)floor(time() / 86400);
+    $t    = time();
 
-    // Two sine waves = smooth, day-varying drift
-    $slow = sin(($day  + $seed % 100) * 0.35) * 0.6;
-    $fast = sin(($hour + $seed % 50)  * 1.10) * 0.4;
-    $wave = ($slow + $fast) / 2.0;
+    $slow = sin(($t / 86400 + $seed % 100) * 0.35) * 0.6;
+    $fast = sin(($t / 900   + $seed % 50)  * 1.10) * 0.15;
 
-    $price = $base * (1.0 + $wave * $vol * 6.0);
+    $wave  = $slow + $fast;
+    $price = $base * (1.0 + $wave * $vol * 3.0);
     return round(max($price, 0.0000001), 8);
 }
 
 /**
- * Build a tiny synthetic price history for a symbol, using the same
- * seeded generator. Used by the signal engine for indicators.
+ * Synthetic price history with the same wave function, in 15-minute steps
+ * so it lines up with simulated_price().
  */
 function synthetic_history(string $symbol, int $points = 60): array
 {
@@ -122,20 +123,16 @@ function synthetic_history(string $symbol, int $points = 60): array
         if ($a['symbol'] === strtoupper($symbol)) { $base = $a['base']; $vol = $a['vol']; break; }
     }
 
-    $seed  = crc32($symbol);
-    $now   = time();
-    $price = $base;
-    $out   = [];
+    $seed = crc32($symbol);
+    $now  = time();
+    $out  = [];
 
-    // Build backwards from "now", then reverse
     for ($i = $points - 1; $i >= 0; $i--) {
-        $t = $now - $i * 3600;
-        $day  = (int)floor($t / 86400);
-        $hour = (int)floor($t / 3600);
-        $slow = sin(($day  + $seed % 100) * 0.35) * 0.6;
-        $fast = sin(($hour + $seed % 50)  * 1.10) * 0.4;
-        $wave = ($slow + $fast) / 2.0;
-        $out[] = round($base * (1.0 + $wave * $vol * 6.0), 8);
+        $t    = $now - $i * 900;
+        $slow = sin(($t / 86400 + $seed % 100) * 0.35) * 0.6;
+        $fast = sin(($t / 900   + $seed % 50)  * 1.10) * 0.15;
+        $wave = $slow + $fast;
+        $out[] = round($base * (1.0 + $wave * $vol * 3.0), 8);
     }
     return $out;
 }

@@ -18,6 +18,7 @@
  *  Each returns a flat array aligned with the candle array,
  *  using null for the warm-up period.
  * ============================================================ */
+
 function calc_series_sma(array $candles, int $period): array
 {
     $out = array_fill(0, count($candles), null);
@@ -83,6 +84,7 @@ function calc_series_macd(array $candles, int $fast = 12, int $slow = 26, int $s
     foreach ($candles as $i => $c) {
         $macd[$i] = ($emaFast[$i] !== null && $emaSlow[$i] !== null) ? $emaFast[$i] - $emaSlow[$i] : null;
     }
+
     // Signal line = EMA of macd line (ignore nulls)
     $signalArr = array_fill(0, count($macd), null);
     $k = 2 / ($signal + 1);
@@ -106,6 +108,7 @@ function calc_series_macd(array $candles, int $fast = 12, int $slow = 26, int $s
             $signalArr[$i] = $sig;
         }
     }
+
     $hist = [];
     foreach ($macd as $i => $m) {
         $hist[$i] = ($m !== null && $signalArr[$i] !== null) ? $m - $signalArr[$i] : null;
@@ -150,9 +153,13 @@ function calc_series_momentum(array $candles, int $lookback = 20): array
 
 /**
  * Compute the full indicator set once for a candle series.
+ * MACD and Bollinger are computed once and sliced — not 3-4 times.
  */
 function build_indicator_set(array $candles): array
 {
+    $macd = calc_series_macd($candles);
+    $bb   = calc_series_bollinger($candles);
+
     return [
         'rsi'         => calc_series_rsi($candles, 14),
         'sma20'       => calc_series_sma($candles, 20),
@@ -160,13 +167,13 @@ function build_indicator_set(array $candles): array
         'sma200'      => calc_series_sma($candles, 200),
         'ema12'       => calc_series_ema($candles, 12),
         'ema26'       => calc_series_ema($candles, 26),
-        'macd'        => calc_series_macd($candles)['macd'],
-        'macd_signal' => calc_series_macd($candles)['signal'],
-        'macd_hist'   => calc_series_macd($candles)['hist'],
-        'bb_upper'    => calc_series_bollinger($candles)['upper'],
-        'bb_middle'   => calc_series_bollinger($candles)['middle'],
-        'bb_lower'    => calc_series_bollinger($candles)['lower'],
-        'bb_pos'      => calc_series_bollinger($candles)['pos'],
+        'macd'        => $macd['macd'],
+        'macd_signal' => $macd['signal'],
+        'macd_hist'   => $macd['hist'],
+        'bb_upper'    => $bb['upper'],
+        'bb_middle'   => $bb['middle'],
+        'bb_lower'    => $bb['lower'],
+        'bb_pos'      => $bb['pos'],
         'momentum'    => calc_series_momentum($candles, 20),
     ];
 }
@@ -174,6 +181,7 @@ function build_indicator_set(array $candles): array
 /* ============================================================
  *  RULE EVALUATION
  * ============================================================ */
+
 function indicator_value(string $name, int $idx, array $indicators, array $candles)
 {
     switch ($name) {
@@ -190,7 +198,7 @@ function indicator_value(string $name, int $idx, array $indicators, array $candl
 
 /**
  * Evaluate a single condition at index $idx.
- * Returns true/false/null (null = warm-up, treat as false).
+ * Returns true/false. Null (warm-up) is treated as false.
  */
 function evaluate_condition(array $cond, int $idx, array $indicators, array $candles, ?float $pnlPct = null): bool
 {
@@ -270,6 +278,7 @@ function evaluate_rules(array $rules, int $idx, array $indicators, array $candle
 /* ============================================================
  *  BACKTEST
  * ============================================================ */
+
 function run_backtest(array $candles, array $strategy, float $startingBalance = 100000.0): array
 {
     $indicators = build_indicator_set($candles);
@@ -373,7 +382,7 @@ function run_backtest(array $candles, array $strategy, float $startingBalance = 
         if ($dd > $maxDD) $maxDD = $dd;
     }
 
-    // Sharpe ratio (daily returns)
+    // Sharpe ratio (annualized from per-bar returns)
     $dailyReturns = [];
     for ($i = 1; $i < count($equity); $i++) {
         $prev = $equity[$i - 1]['value'];
@@ -387,7 +396,7 @@ function run_backtest(array $candles, array $strategy, float $startingBalance = 
         $variance = 0.0;
         foreach ($dailyReturns as $r) $variance += ($r - $mean) ** 2;
         $sd = sqrt($variance / count($dailyReturns));
-        $sharpe = $sd > 0 ? ($mean / $sd) * sqrt(252) : 0.0; // annualized
+        $sharpe = $sd > 0 ? ($mean / $sd) * sqrt(252) : 0.0;
     }
 
     // Buy-and-hold comparison

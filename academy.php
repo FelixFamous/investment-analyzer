@@ -1,67 +1,81 @@
 <?php
 require_once __DIR__ . '/includes/auth.php';
+require_once __DIR__ . '/includes/academy-engine.php';
+
 $user = require_login();
 
-// Check if user made the required deposit
-$stmt = db()->prepare('SELECT COUNT(*) FROM cash_transactions WHERE user_id = ? AND type = "DEPOSIT" AND amount >= 50');
-$stmt->execute([$user['id']]);
-$hasDeposit = (int)$stmt->fetchColumn() > 0;
+$levels     = academy_levels();
+$modules    = academy_modules();
+$progress   = academy_progress_summary((int)$user['id']);
+$nextUp     = academy_next_recommended((int)$user['id']);
 
-$pageTitle = 'Trading Academy';
+$byLevel = [];
+foreach ($modules as $m) {
+    $byLevel[$m['level_slug']][] = $m;
+}
+
+$pageTitle = 'Academy';
 require __DIR__ . '/includes/header.php';
 ?>
 
 <link rel="stylesheet" href="<?= e(APP_URL) ?>/assets/css/academy.css">
 
-<?php if (!$hasDeposit): ?>
-  <!-- Locked screen -->
-  <div class="academy-locked">
-    <div class="academy-lock-icon">🔒</div>
-    <h1>Academy Locked</h1>
-    <p>
-      The AlphaEdge Academy is a complete learning library — 16 courses, 48 lessons, badges, and a
-      strategies masterclass. Access is unlocked once you make your first demo deposit of at least <strong>$50</strong>.
-    </p>
-    <p class="academy-lock-hint">
-      This is a simulated deposit. No real money is ever handled.
-    </p>
-    <a href="<?= e(APP_URL) ?>/dashboard.php" class="btn btn-primary" style="margin-top:10px;">
-      💰 Make a demo deposit to unlock
+<div class="academy-hero">
+  <h1>AlphaEdge Academy</h1>
+  <p class="academy-tagline">Learn the Market. Understand the Risk. Build Your Edge.</p>
+
+  <div class="academy-progress-bar">
+    <div class="academy-progress-fill" style="width:<?= e((string)$progress['percent']) ?>%"></div>
+  </div>
+  <div class="academy-progress-text">
+    <strong><?= (int)$progress['completed'] ?></strong> of
+    <strong><?= (int)$progress['total'] ?></strong> lessons completed
+    · <?= e((string)$progress['percent']) ?>%
+  </div>
+</div>
+
+<?php if ($nextUp): ?>
+  <div class="panel academy-next-card">
+    <div class="academy-next-left">
+      <div class="academy-next-label">Recommended next</div>
+      <div class="academy-next-title"><?= e($nextUp['title']) ?></div>
+    </div>
+    <a class="btn btn-primary" href="<?= e(APP_URL) ?>/academy-lesson.php?slug=<?= e($nextUp['slug']) ?>">
+      Continue →
     </a>
   </div>
-<?php else: ?>
-
-  <div class="summary-grid" style="margin-bottom:20px;">
-    <div class="card">
-      <div class="card-label">Lessons Completed</div>
-      <div class="card-value" id="acDone">—</div>
-      <div class="card-sub">Out of 48</div>
-    </div>
-    <div class="card">
-      <div class="card-label">Progress</div>
-      <div class="card-value" id="acPct">—</div>
-      <div class="card-sub">Academy completion</div>
-    </div>
-    <div class="card">
-      <div class="card-label">Badges Earned</div>
-      <div class="card-value" id="acBadges">—</div>
-      <div class="card-sub">Achievements unlocked</div>
-    </div>
-    <div class="card">
-      <div class="card-label">Current Stage</div>
-      <div class="card-value" id="acStage" style="font-size:18px;">—</div>
-      <div class="card-sub">Your level</div>
-    </div>
-  </div>
-
-  <div class="academy-stages" id="academyStages"></div>
-
 <?php endif; ?>
 
-<script>
-  window.AC_API = <?= json_encode(APP_URL) ?>;
-  window.AC_HAS_DEPOSIT = <?= json_encode($hasDeposit) ?>;
-</script>
-<script src="<?= e(APP_URL) ?>/assets/js/academy.js" defer></script>
+<?php foreach ($levels as $lvl): ?>
+  <?php if (empty($byLevel[$lvl['slug']])) continue; ?>
+  <div class="academy-level-section">
+    <div class="academy-level-header">
+      <h2><?= e($lvl['title']) ?></h2>
+      <span class="badge"><?= count($byLevel[$lvl['slug']]) ?> module<?= count($byLevel[$lvl['slug']]) === 1 ? '' : 's' ?></span>
+    </div>
+    <p class="academy-level-desc"><?= e($lvl['description']) ?></p>
+
+    <div class="academy-module-grid">
+      <?php foreach ($byLevel[$lvl['slug']] as $mod): ?>
+        <a class="academy-module-card" href="<?= e(APP_URL) ?>/academy-module.php?slug=<?= e($mod['slug']) ?>">
+          <div class="academy-module-title"><?= e($mod['title']) ?></div>
+          <div class="academy-module-desc"><?= e($mod['description']) ?></div>
+          <div class="academy-module-meta">
+            <span class="academy-module-pill"><?= e($lvl['title']) ?></span>
+          </div>
+        </a>
+      <?php endforeach; ?>
+    </div>
+  </div>
+<?php endforeach; ?>
+
+<?php if (!$modules): ?>
+  <div class="panel">
+    <div class="empty-state">
+      No modules have been published yet.<br>
+      Check back soon — the curriculum is being built.
+    </div>
+  </div>
+<?php endif; ?>
 
 <?php require __DIR__ . '/includes/footer.php'; ?>

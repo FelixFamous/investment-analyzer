@@ -19,18 +19,17 @@ define('SESSION_NAME', 'alphaedge_session');
 define('APP_SECRET', 'dev_only_change_me_before_deploy');
 
 // --- Market data (Finnhub) ---
-// Get a free key at https://finnhub.io — paste it below when ready.
 define('FINNHUB_API_KEY', '');
 
 // --- Trading simulation ---
-// Starting virtual balance for every new account (in USD).
 define('STARTING_BALANCE', 100000.00);
 
 // --- Timezone ---
 date_default_timezone_set('UTC');
 
-// --- Error display: ON in dev, OFF in production ---
-define('DEBUG_MODE', true);
+// --- Error display: OFF in production ---
+// Set ALPHAEDGE_DEBUG=1 in your shell to enable verbose errors locally.
+define('DEBUG_MODE', getenv('ALPHAEDGE_DEBUG') === '1');
 
 if (DEBUG_MODE) {
     error_reporting(E_ALL);

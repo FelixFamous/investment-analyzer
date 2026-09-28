@@ -13,11 +13,11 @@ if ($_SERVER['REQUEST_METHOD'] !== 'POST') {
 }
 
 $user = current_user();
-if (!$user) json_response(['error' => 'Not authenticated'], 401);
-
-if (!hash_equals($_SESSION['csrf'] ?? '', $_POST['csrf'] ?? '')) {
-    json_response(['error' => 'CSRF token mismatch'], 419);
+if (!$user) {
+    json_response(['error' => 'Not authenticated'], 401);
 }
+
+csrf_verify_or_die();
 
 $symbol   = strtoupper(post('symbol'));
 $quantity = (float)($_POST['quantity'] ?? 0);
@@ -30,20 +30,22 @@ $price = get_price($symbol);
 if ($price === null) json_response(['error' => 'Unknown symbol'], 404);
 
 $pdo = db();
-$stmt = $pdo->prepare('SELECT id, quantity, avg_price FROM holdings
-                       WHERE user_id = ? AND symbol = ? LIMIT 1');
-$stmt->execute([$user['id'], $symbol]);
-$holding = $stmt->fetch();
-
-if (!$holding || (float)$holding['quantity'] < $quantity - 0.00000001) {
-    json_response(['error' => 'Not enough shares to sell'], 400);
-}
-
-$proceeds = $price * $quantity;
-$pnl      = ($price - (float)$holding['avg_price']) * $quantity;
 
 try {
     $pdo->beginTransaction();
+
+    $stmt = $pdo->prepare('SELECT id, quantity, avg_price FROM holdings
+                           WHERE user_id = ? AND symbol = ? LIMIT 1 FOR UPDATE');
+    $stmt->execute([$user['id'], $symbol]);
+    $holding = $stmt->fetch();
+
+    if (!$holding || (float)$holding['quantity'] < $quantity - 0.00000001) {
+        $pdo->rollBack();
+        json_response(['error' => 'Not enough shares to sell'], 400);
+    }
+
+    $proceeds = $price * $quantity;
+    $pnl      = ($price - (float)$holding['avg_price']) * $quantity;
 
     $pdo->prepare('UPDATE users SET cash_balance = cash_balance + ? WHERE id = ?')
         ->execute([$proceeds, $user['id']]);
@@ -62,7 +64,6 @@ try {
 
     $pdo->commit();
 
-    // Copy-trade mirror
     $copied = mirror_trade_to_followers((int)$user['id'], $symbol, 'SELL', $quantity, $price);
 
     json_response([

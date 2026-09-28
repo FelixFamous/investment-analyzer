@@ -19,7 +19,6 @@ function run_order_engine(int $userId): void
     $_SESSION['_order_engine_last'] = $now;
 
     try {
-        /* ---------- 1. Pending LIMIT / STOP orders ---------- */
         $stmt = db()->prepare('SELECT * FROM pending_orders
                                WHERE user_id = ? AND status = "open"
                                ORDER BY created_at ASC LIMIT 50');
@@ -34,7 +33,7 @@ function run_order_engine(int $userId): void
             if ($o['order_type'] === 'LIMIT') {
                 if ($o['side'] === 'BUY'  && $price <= $trigger) $hit = true;
                 if ($o['side'] === 'SELL' && $price >= $trigger) $hit = true;
-            } else { // STOP
+            } else {
                 if ($o['side'] === 'BUY'  && $price >= $trigger) $hit = true;
                 if ($o['side'] === 'SELL' && $price <= $trigger) $hit = true;
             }
@@ -42,7 +41,6 @@ function run_order_engine(int $userId): void
             if ($hit) fill_order($o, $price);
         }
 
-        /* ---------- 2. Take-Profit / Stop-Loss on holdings ---------- */
         $stmt = db()->prepare('
             SELECT id, symbol, quantity, avg_price, take_profit, stop_loss,
                    tp_note, sl_note
@@ -73,9 +71,6 @@ function run_order_engine(int $userId): void
     }
 }
 
-/**
- * Fill a queued pending order (LIMIT or STOP).
- */
 function fill_order(array $order, float $price): bool
 {
     $pdo = db();
@@ -93,9 +88,11 @@ function fill_order(array $order, float $price): bool
         if ($stmt->fetchColumn() !== 'open') { $pdo->rollBack(); return false; }
 
         if ($side === 'BUY') {
-            $stmt = $pdo->prepare('SELECT cash_balance FROM users WHERE id = ? LIMIT 1');
+            // Lock user row before reading balance
+            $stmt = $pdo->prepare('SELECT cash_balance FROM users WHERE id = ? FOR UPDATE');
             $stmt->execute([$userId]);
             $cash = (float)$stmt->fetchColumn();
+
             if ($cash < $total - 0.00000001) {
                 $pdo->prepare('UPDATE pending_orders SET status = "cancelled" WHERE id = ?')
                     ->execute([$order['id']]);
@@ -150,9 +147,6 @@ function fill_order(array $order, float $price): bool
     }
 }
 
-/**
- * Auto-sell an entire holding because TP or SL was hit.
- */
 function auto_sell_position(int $userId, array $holding, float $price, string $reason): bool
 {
     $pdo = db();
@@ -165,7 +159,6 @@ function auto_sell_position(int $userId, array $holding, float $price, string $r
         $ok = execute_sell_tx($pdo, $userId, $symbol, $quantity, $price);
         if (!$ok) { $pdo->rollBack(); return false; }
 
-        // Clear TP/SL on the holding (it will be deleted if qty=0, or reset if partial)
         $pdo->prepare('UPDATE holdings
                        SET take_profit = NULL, stop_loss = NULL,
                            tp_note = NULL, sl_note = NULL
@@ -187,14 +180,10 @@ function auto_sell_position(int $userId, array $holding, float $price, string $r
     }
 }
 
-/**
- * Execute a SELL inside an existing transaction.
- * Returns true on success, false if not enough shares.
- */
 function execute_sell_tx(PDO $pdo, int $userId, string $symbol, float $quantity, float $price): bool
 {
     $stmt = $pdo->prepare('SELECT id, quantity, avg_price FROM holdings
-                           WHERE user_id = ? AND symbol = ? LIMIT 1');
+                           WHERE user_id = ? AND symbol = ? LIMIT 1 FOR UPDATE');
     $stmt->execute([$userId, $symbol]);
     $h = $stmt->fetch();
 

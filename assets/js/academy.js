@@ -1,145 +1,121 @@
+/* ============================================================
+   AlphaEdge Academy — client interactions
+   ============================================================ */
 (function () {
   'use strict';
 
-  const API = window.AC_API || '';
-  const HAS_DEPOSIT = window.AC_HAS_DEPOSIT;
-  const COURSE_ID = window.AC_COURSE_ID || 0;
+  const cfg = window.ACADEMY;
+  if (!cfg) return;
 
-  /* ============================================================
-   *  ACADEMY LIST PAGE
-   * ============================================================ */
-  const stagesRoot = document.getElementById('academyStages');
-  if (stagesRoot && HAS_DEPOSIT) {
-    loadAcademyList();
+  function post(path, data) {
+    const body = new URLSearchParams(Object.assign({ csrf: cfg.csrf }, data));
+    return fetch(cfg.api + path, {
+      method: 'POST',
+      credentials: 'same-origin',
+      headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
+      body
+    }).then(function (r) { return r.json(); });
   }
 
-  async function loadAcademyList() {
-    try {
-      const r = await fetch(API + '/api/academy.php?action=list', { credentials: 'same-origin' });
-      const json = await r.json();
-      const courses = json.courses || [];
-
-      // Group by stage
-      const stages = ['basic','intermediate','advanced','strategies'];
-      const stageLabels = {
-        basic:        ['Basic Trader',        'Fundamentals — what markets are and how they work'],
-        intermediate: ['Intermediate Trader', 'Structure, indicators, risk management'],
-        advanced:     ['Advanced Trader',     'Patterns, multi-timeframe, order flow'],
-        strategies:   ['Strategies Masterclass', 'Specific strategies — how to build and trade them'],
-      };
-
-      let html = '';
-      let totalDone = 0;
-      let totalLessons = 0;
-
-      stages.forEach(stage => {
-        const stageCourses = courses.filter(c => c.stage === stage);
-        if (!stageCourses.length) return;
-
-        stageCourses.forEach(c => {
-          totalDone += c.done;
-          totalLessons += c.total;
-        });
-
-        html += `<div class="academy-stage">
-          <div class="academy-stage-title">${stageLabels[stage][0]}</div>
-          <div class="academy-stage-sub">${stageLabels[stage][1]}</div>
-          <div class="academy-courses-grid">`;
-
-        stageCourses.forEach(c => {
-          const pct = c.total > 0 ? (c.done / c.total) * 100 : 0;
-          html += `
-            <a href="${API}/academy-course.php?id=${c.id}" class="academy-course-card">
-              <div class="academy-course-head">
-                <span class="academy-course-icon">${c.icon}</span>
-                <span class="academy-course-title">${esc(c.title)}</span>
-              </div>
-              <div class="academy-course-desc">${esc(c.description || '')}</div>
-              <div class="academy-course-progress">
-                <div class="academy-course-progress-fill" style="width:${pct}%"></div>
-              </div>
-              <div class="academy-course-meta">${c.done} / ${c.total} lessons</div>
-            </a>
-          `;
-        });
-
-        html += '</div></div>';
-      });
-
-      stagesRoot.innerHTML = html;
-
-      // Stats
-      document.getElementById('acDone').textContent = totalDone;
-      const pct = totalLessons > 0 ? Math.round((totalDone / totalLessons) * 100) : 0;
-      document.getElementById('acPct').textContent = pct + '%';
-      document.getElementById('acBadges').textContent = totalDone > 15 ? '4' : (totalDone > 5 ? '2' : (totalDone > 0 ? '1' : '0'));
-      document.getElementById('acStage').textContent = pct >= 75 ? 'Strategies' : (pct >= 50 ? 'Advanced' : (pct >= 25 ? 'Intermediate' : 'Basic'));
-    } catch (err) {
-      stagesRoot.innerHTML = '<div class="empty-state" style="color:var(--red);">Failed to load Academy.</div>';
-    }
-  }
-
-  function esc(s) { const d = document.createElement('div'); d.textContent = s; return d.innerHTML; }
-
-  /* ============================================================
-   *  COURSE DETAIL PAGE
-   * ============================================================ */
-  const lessonList = document.querySelectorAll('.academy-lesson-item');
-  if (lessonList.length) {
-    // Click to switch lessons
-    lessonList.forEach(item => {
-      item.addEventListener('click', () => {
-        const id = item.dataset.lessonId;
-
-        lessonList.forEach(i => i.classList.remove('active'));
-        item.classList.add('active');
-
-        document.querySelectorAll('.academy-lesson-content').forEach(c => {
-          c.style.display = c.dataset.lessonId === id ? '' : 'none';
-        });
-
-        window.scrollTo({ top: 0, behavior: 'smooth' });
-      });
-    });
-
-    // Mark first as active
-    lessonList[0].classList.add('active');
-
-    // Complete button
-    document.querySelectorAll('.academy-complete-btn').forEach(btn => {
-      btn.addEventListener('click', async () => {
-        const lessonId = btn.dataset.complete;
-        btn.disabled = true;
-        btn.textContent = 'Saving…';
-
-        try {
-          const r = await fetch(API + '/api/academy.php?action=complete', {
-            method: 'POST',
-            credentials: 'same-origin',
-            headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
-            body: new URLSearchParams({ lesson_id: lessonId }),
-          });
-          const json = await r.json();
-          if (!r.ok) throw new Error(json.error);
-
-          // Update UI
-          btn.outerHTML = '<div class="academy-completed-badge">✓ Completed</div>';
-          const listItem = document.querySelector(`.academy-lesson-item[data-lesson-id="${lessonId}"]`);
-          if (listItem) {
-            listItem.classList.add('done');
-            if (!listItem.querySelector('.academy-lesson-check')) {
-              const check = document.createElement('span');
-              check.className = 'academy-lesson-check';
-              check.textContent = '✓';
-              listItem.appendChild(check);
-            }
+  /* ---------- Bookmark toggle ---------- */
+  const bmBtn = document.getElementById('academyBookmarkBtn');
+  if (bmBtn) {
+    bmBtn.addEventListener('click', function () {
+      bmBtn.disabled = true;
+      post('/api/academy-bookmark.php', { lesson_id: cfg.lessonId, item_type: 'lesson' })
+        .then(function (res) {
+          bmBtn.disabled = false;
+          if (res && res.success) {
+            bmBtn.textContent = res.bookmarked ? '★ Bookmarked' : '☆ Bookmark';
           }
-        } catch (err) {
-          btn.disabled = false;
-          btn.textContent = '✓ Mark as complete';
-          alert(err.message);
+        })
+        .catch(function () { bmBtn.disabled = false; });
+    });
+  }
+
+  /* ---------- Mark complete ---------- */
+  const doneBtn = document.getElementById('academyMarkDoneBtn');
+  if (doneBtn) {
+    doneBtn.addEventListener('click', function () {
+      if (cfg.isDone) return;
+      doneBtn.disabled = true;
+      post('/api/academy-complete.php', { lesson_id: cfg.lessonId })
+        .then(function (res) {
+          if (res && res.success) {
+            doneBtn.textContent = '✓ Completed';
+            cfg.isDone = true;
+          } else {
+            doneBtn.disabled = false;
+          }
+        })
+        .catch(function () { doneBtn.disabled = false; });
+    });
+  }
+
+  /* ---------- Notes ---------- */
+  const noteBtn = document.getElementById('academyNoteSaveBtn');
+  const noteBox = document.getElementById('academyNoteText');
+  const noteStatus = document.getElementById('academyNoteStatus');
+  if (noteBtn && noteBox) {
+    noteBtn.addEventListener('click', function () {
+      noteBtn.disabled = true;
+      if (noteStatus) noteStatus.textContent = 'Saving…';
+      post('/api/academy-note.php', { lesson_id: cfg.lessonId, note: noteBox.value })
+        .then(function (res) {
+          noteBtn.disabled = false;
+          if (noteStatus) noteStatus.textContent = (res && res.success) ? 'Saved.' : 'Could not save.';
+        })
+        .catch(function () {
+          noteBtn.disabled = false;
+          if (noteStatus) noteStatus.textContent = 'Network error.';
+        });
+    });
+  }
+
+  /* ---------- Quiz submission ---------- */
+  const quizForm = document.getElementById('academyQuizForm');
+  const quizResult = document.getElementById('academyQuizResult');
+  if (quizForm && quizResult) {
+    quizForm.addEventListener('submit', function (e) {
+      e.preventDefault();
+      const answers = {};
+      quizForm.querySelectorAll('.academy-quiz-q').forEach(function (qEl) {
+        const qid = qEl.getAttribute('data-qid');
+        const checked = qEl.querySelector('input[type="radio"]:checked');
+        if (checked) {
+          answers[qid] = checked.value;
+        } else {
+          const text = qEl.querySelector('input[type="text"]');
+          if (text && text.value.trim() !== '') answers[qid] = text.value.trim();
         }
       });
+
+      const submitBtn = quizForm.querySelector('button[type="submit"]');
+      if (submitBtn) submitBtn.disabled = true;
+      quizResult.style.display = 'block';
+      quizResult.textContent = 'Scoring…';
+
+      post('/api/academy-quiz-submit.php', {
+        quiz_id: quizForm.getAttribute('data-quiz-id'),
+        answers: JSON.stringify(answers)
+      })
+        .then(function (res) {
+          if (submitBtn) submitBtn.disabled = false;
+          if (!res || !res.success) {
+            quizResult.textContent = 'Could not score your answers.';
+            return;
+          }
+          quizResult.innerHTML =
+            '<strong>' + res.score + '%</strong> — ' +
+            (res.passed ? '✓ Passed' : 'Not quite. Review the lesson and try again.') +
+            (res.correct_count !== undefined
+              ? ' (' + res.correct_count + '/' + res.total + ' correct)'
+              : '');
+        })
+        .catch(function () {
+          if (submitBtn) submitBtn.disabled = false;
+          quizResult.textContent = 'Network error.';
+        });
     });
   }
 })();

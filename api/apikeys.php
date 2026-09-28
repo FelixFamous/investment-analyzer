@@ -1,9 +1,6 @@
 <?php
 /**
  * /api/apikeys.php
- * GET  ?action=list
- * POST action=create  label, permissions (read|trade)
- * POST action=revoke  id
  */
 require_once __DIR__ . '/../includes/auth.php';
 
@@ -28,16 +25,15 @@ if ($action === 'list') {
 
 if ($action === 'create') {
     if ($_SERVER['REQUEST_METHOD'] !== 'POST') json_response(['error' => 'Method not allowed'], 405);
-    if (!hash_equals($_SESSION['csrf'] ?? '', $_POST['csrf'] ?? '')) json_response(['error' => 'CSRF mismatch'], 419);
+    csrf_verify_or_die();
 
     $label = trim((string)($_POST['label'] ?? 'Default key'));
     $perms = (string)($_POST['permissions'] ?? 'read');
     if (strlen($label) > 60) $label = substr($label, 0, 60);
     if (!in_array($perms, ['read', 'trade'], true)) $perms = 'read';
 
-    // Generate a key: prefix + random secret
-    $prefix = 'ae_' . strtolower(bin2hex(random_bytes(4)));       // e.g. ae_a1b2c3d4
-    $secret = bin2hex(random_bytes(24));                          // 48 hex chars
+    $prefix = 'ae_' . strtolower(bin2hex(random_bytes(4)));
+    $secret = bin2hex(random_bytes(24));
     $fullKey = $prefix . '_' . $secret;
 
     db()->prepare('INSERT INTO api_keys (user_id, label, key_prefix, key_hash, permissions) VALUES (?, ?, ?, ?, ?)')
@@ -52,7 +48,7 @@ if ($action === 'create') {
 
 if ($action === 'revoke') {
     if ($_SERVER['REQUEST_METHOD'] !== 'POST') json_response(['error' => 'Method not allowed'], 405);
-    if (!hash_equals($_SESSION['csrf'] ?? '', $_POST['csrf'] ?? '')) json_response(['error' => 'CSRF mismatch'], 419);
+    csrf_verify_or_die();
     $id = (int)($_POST['id'] ?? 0);
     db()->prepare('UPDATE api_keys SET revoked_at = UTC_TIMESTAMP() WHERE id = ? AND user_id = ?')
         ->execute([$id, $user['id']]);

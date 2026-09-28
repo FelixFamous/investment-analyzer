@@ -14,21 +14,20 @@ if (session_status() !== PHP_SESSION_ACTIVE) {
         'path'     => '/',
         'httponly' => true,
         'samesite' => 'Lax',
+        'secure'   => !empty($_SERVER['HTTPS']) && $_SERVER['HTTPS'] !== 'off',
     ]);
     session_start();
 }
 
+/**
+ * Fetch the current user. No static caching — a trade in the same request
+ * must be reflected on the next read (balances, KYC, etc.).
+ */
 function current_user(): ?array
 {
     if (empty($_SESSION['user_id'])) return null;
 
-    static $cache = null;
-    static $lastTouch = 0;
-
     $now = time();
-    if ($cache !== null && $cache['id'] === $_SESSION['user_id'] && ($now - $lastTouch) < 5) {
-        return $cache;
-    }
 
     $stmt = db()->prepare('
         SELECT id, username, email, cash_balance, is_admin, created_at, last_seen, timezone,
@@ -56,9 +55,7 @@ function current_user(): ?array
         $_SESSION['_last_touch'] = $now;
     }
 
-    $cache = $user;
-    $lastTouch = $now;
-    return $cache;
+    return $user;
 }
 
 function is_logged_in(): bool { return current_user() !== null; }
@@ -103,8 +100,9 @@ function csrf_field(): string
 
 function csrf_check(): void
 {
-    $sent = $_POST['csrf'] ?? '';
-    if (!hash_equals($_SESSION['csrf'] ?? '', $sent)) {
+    $expected = $_SESSION['csrf'] ?? '';
+    $sent     = $_POST['csrf'] ?? '';
+    if ($expected === '' || !hash_equals($expected, $sent)) {
         http_response_code(419);
         die('CSRF token mismatch.');
     }
@@ -117,10 +115,10 @@ require_once __DIR__ . '/order-engine.php';
 require_once __DIR__ . '/dca-engine.php';
 
 $__script = basename($_SERVER['PHP_SELF'] ?? '');
-if (!empty($_SESSION['user_id'])
-    && strpos($_SERVER['REQUEST_URI'] ?? '', '/api/') === false
-    && !in_array($__script, ['order.php', 'cancel-order.php'], true)) {
+$__dir    = basename(dirname($_SERVER['PHP_SELF'] ?? ''));
+$__inApi  = ($__dir === 'api');
 
+if (!empty($_SESSION['user_id']) && !$__inApi) {
     run_order_engine((int)$_SESSION['user_id']);
     run_dca_engine((int)$_SESSION['user_id']);
 }

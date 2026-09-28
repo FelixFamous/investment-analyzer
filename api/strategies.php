@@ -2,12 +2,6 @@
 /**
  * /api/strategies.php
  * CRUD for user-saved strategies + presets.
- *
- * GET  ?action=list               → user strategies + presets
- * GET  ?action=get&id=N           → one strategy (own or preset)
- * POST action=save                → create/update
- * POST action=delete  id
- * POST action=duplicate id        → copy a preset into the user's saved strategies
  */
 require_once __DIR__ . '/../includes/auth.php';
 require_once __DIR__ . '/../includes/strategy-engine.php';
@@ -55,7 +49,6 @@ if ($action === 'list') {
 if ($action === 'get') {
     $id = $_GET['id'] ?? '';
 
-    // Preset?
     if (!ctype_digit((string)$id)) {
         $presets = preset_strategies();
         if (!isset($presets[$id])) json_response(['error' => 'Strategy not found'], 404);
@@ -88,7 +81,7 @@ if ($action === 'get') {
 /* ---------- SAVE ---------- */
 if ($action === 'save') {
     if ($_SERVER['REQUEST_METHOD'] !== 'POST') json_response(['error' => 'Method not allowed'], 405);
-    if (!hash_equals($_SESSION['csrf'] ?? '', $_POST['csrf'] ?? '')) json_response(['error' => 'CSRF mismatch'], 419);
+    csrf_verify_or_die();
 
     $id = (int)($_POST['id'] ?? 0);
     $name = trim((string)($_POST['name'] ?? ''));
@@ -112,7 +105,6 @@ if ($action === 'save') {
         ');
         $stmt->execute([$name, $description, json_encode($entry), json_encode($exit), $isPublic, $id, $user['id']]);
         if ($stmt->rowCount() === 0) {
-            // Could be no change — verify it exists
             $stmt = db()->prepare('SELECT id FROM strategies WHERE id = ? AND user_id = ?');
             $stmt->execute([$id, $user['id']]);
             if (!$stmt->fetchColumn()) json_response(['error' => 'Strategy not found'], 404);
@@ -131,7 +123,7 @@ if ($action === 'save') {
 /* ---------- DELETE ---------- */
 if ($action === 'delete') {
     if ($_SERVER['REQUEST_METHOD'] !== 'POST') json_response(['error' => 'Method not allowed'], 405);
-    if (!hash_equals($_SESSION['csrf'] ?? '', $_POST['csrf'] ?? '')) json_response(['error' => 'CSRF mismatch'], 419);
+    csrf_verify_or_die();
 
     $id = (int)($_POST['id'] ?? 0);
     if ($id <= 0) json_response(['error' => 'Invalid id'], 400);
@@ -145,7 +137,7 @@ if ($action === 'delete') {
 /* ---------- DUPLICATE (preset → user) ---------- */
 if ($action === 'duplicate') {
     if ($_SERVER['REQUEST_METHOD'] !== 'POST') json_response(['error' => 'Method not allowed'], 405);
-    if (!hash_equals($_SESSION['csrf'] ?? '', $_POST['csrf'] ?? '')) json_response(['error' => 'CSRF mismatch'], 419);
+    csrf_verify_or_die();
 
     $presetKey = (string)($_POST['preset_key'] ?? '');
     $presets = preset_strategies();

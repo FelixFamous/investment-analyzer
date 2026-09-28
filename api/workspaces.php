@@ -17,8 +17,6 @@ if ($action === 'list') {
         $r['is_default'] = (int)$r['is_default'];
         $r['symbols'] = json_decode($r['symbols_json'], true) ?: [];
         $r['indicators'] = json_decode($r['indicators_json'] ?? 'null', true) ?: [];
-        // Normalize column name for frontend
-        $r['interval'] = $r['interval'];
     }
     unset($r);
     json_response(['workspaces' => $rows]);
@@ -26,7 +24,7 @@ if ($action === 'list') {
 
 if ($action === 'save') {
     if ($_SERVER['REQUEST_METHOD'] !== 'POST') json_response(['error' => 'Method not allowed'], 405);
-    if (!hash_equals($_SESSION['csrf'] ?? '', $_POST['csrf'] ?? '')) json_response(['error' => 'CSRF mismatch'], 419);
+    csrf_verify_or_die();
 
     $id = (int)($_POST['id'] ?? 0);
     $name = trim((string)($_POST['name'] ?? ''));
@@ -68,7 +66,7 @@ if ($action === 'save') {
 
 if ($action === 'delete') {
     if ($_SERVER['REQUEST_METHOD'] !== 'POST') json_response(['error' => 'Method not allowed'], 405);
-    if (!hash_equals($_SESSION['csrf'] ?? '', $_POST['csrf'] ?? '')) json_response(['error' => 'CSRF mismatch'], 419);
+    csrf_verify_or_die();
     $id = (int)($_POST['id'] ?? 0);
     db()->prepare('DELETE FROM workspaces WHERE id = ? AND user_id = ?')->execute([$id, $user['id']]);
     json_response(['success' => true]);
@@ -76,7 +74,7 @@ if ($action === 'delete') {
 
 if ($action === 'default') {
     if ($_SERVER['REQUEST_METHOD'] !== 'POST') json_response(['error' => 'Method not allowed'], 405);
-    if (!hash_equals($_SESSION['csrf'] ?? '', $_POST['csrf'] ?? '')) json_response(['error' => 'CSRF mismatch'], 419);
+    csrf_verify_or_die();
     $id = (int)($_POST['id'] ?? 0);
     db()->prepare('UPDATE workspaces SET is_default = 0 WHERE user_id = ?')->execute([$user['id']]);
     db()->prepare('UPDATE workspaces SET is_default = 1 WHERE id = ? AND user_id = ?')->execute([$id, $user['id']]);

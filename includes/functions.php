@@ -69,6 +69,19 @@ function flash_get(): ?array
     return $f;
 }
 
+/**
+ * Shared CSRF verification for API endpoints.
+ * Fails closed if the session has no token (empty-string bypass protection).
+ */
+function csrf_verify_or_die(): void
+{
+    $expected = $_SESSION['csrf'] ?? '';
+    $sent     = $_POST['csrf'] ?? '';
+    if ($expected === '' || !hash_equals($expected, $sent)) {
+        json_response(['error' => 'CSRF token mismatch'], 419);
+    }
+}
+
 /* ==================== Timezone helpers ==================== */
 
 function user_timezone(): string
@@ -150,14 +163,6 @@ function tz_display_label(): string
 
 /* ==================== Portfolio snapshots ==================== */
 
-/**
- * Record today's equity snapshot for a user.
- * Idempotent — calling it many times per day updates the same row
- * with the latest prices. Designed to be called on every page load
- * for the logged-in user (cheap: one UPSERT).
- *
- * @param int|null $userId   null → current user
- */
 function snapshot_portfolio(?int $userId = null): void
 {
     if ($userId === null) {
@@ -167,28 +172,24 @@ function snapshot_portfolio(?int $userId = null): void
     }
 
     try {
-        // Fetch cash
         $stmt = db()->prepare('SELECT cash_balance FROM users WHERE id = ? LIMIT 1');
         $stmt->execute([$userId]);
         $cashRow = $stmt->fetch();
         if (!$cashRow) return;
         $cash = (float)$cashRow['cash_balance'];
 
-        // Sum holdings at live prices
         $stmt = db()->prepare('SELECT symbol, quantity, avg_price FROM holdings WHERE user_id = ?');
         $stmt->execute([$userId]);
         $holdingsValue = 0.0;
         foreach ($stmt->fetchAll() as $h) {
-            // get_price comes from market.php; fallback to avg_price if missing
             $price = function_exists('get_price') ? get_price($h['symbol']) : null;
             if ($price === null) $price = (float)$h['avg_price'];
             $holdingsValue += (float)$h['quantity'] * (float)$price;
         }
         $equity = $cash + $holdingsValue;
 
-        $today = gmdate('Y-m-d'); // store in UTC
+        $today = gmdate('Y-m-d');
 
-        // Upsert: try insert, update on duplicate date
         db()->prepare('
             INSERT INTO portfolio_snapshots (user_id, snapshot_date, equity, cash, holdings_value)
             VALUES (?, ?, ?, ?, ?)
@@ -200,7 +201,6 @@ function snapshot_portfolio(?int $userId = null): void
         ')->execute([$userId, $today, $equity, $cash, $holdingsValue]);
 
     } catch (Throwable $e) {
-        // Snapshot failure must never break the page
         error_log('snapshot_portfolio failed: ' . $e->getMessage());
     }
 }
